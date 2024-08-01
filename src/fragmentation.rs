@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::time::Instant;
 
 use rustc_hash::FxHashMap;
@@ -15,15 +16,6 @@ pub struct Fragmentation {
 }
 
 impl Fragmentation {
-    pub fn default() -> Self {
-        let default = Fragmentation {
-            next_group: 1,
-            received: FxHashMap::default(),
-            received_at: FxHashMap::default(),
-        };
-        return default;
-    }
-
     pub fn expire_groups(&mut self) {
         let mut expired: Vec<u16> = Vec::new();
         for (group, time) in &self.received_at {
@@ -37,86 +29,77 @@ impl Fragmentation {
         }
     }
 
-    pub fn should_fragment(length: usize) -> bool {
-        return length >= FRAG_SIZE;
+    #[must_use]
+    pub const fn should_fragment(length: usize) -> bool {
+        length >= FRAG_SIZE
     }
 
     fn get_next_group(&mut self) -> u16 {
         self.next_group += 1;
-        if self.next_group >= std::u16::MAX - 1 {
+        if self.next_group >= u16::MAX - 1 {
             self.next_group = 1;
+
         }
-        return self.next_group;
+        self.next_group
     }
 
     fn get_group_length(map: &FxHashMap<u16, Vec<u8>>) -> usize {
-        let mut length = 0;
-        for (_, value) in map {
-            length += value.len() - TACHYON_FRAGMENTED_HEADER_SIZE;
-        }
-        return length;
+        map.values().fold(0, |length, buffer| length + buffer.len() - TACHYON_FRAGMENTED_HEADER_SIZE)
     }
 
     pub fn assemble(&mut self, header: Header) -> Result<Vec<u8>, ()> {
-        let map = match self.received.get_mut(&header.fragment_group) {
-            Some(v) => v,
-            None => {
-                return Err(());
-            }
-        };
+        let map = self.received.get_mut(&header.fragment_group).ok_or(())?;
         if map.len() != header.fragment_count as usize {
             return Err(());
         }
 
-        let body_length = Fragmentation::get_group_length(map);
+        let body_length = Self::get_group_length(map);
 
         let mut buffer: Vec<u8> = vec![0; body_length];
         let mut offset = 0;
 
         let mut seq = header.fragment_start_sequence;
         for _ in 0..header.fragment_count {
-            match map.get_mut(&seq) {
-                Some(fragment) => {
-                    let frag_body_len = fragment.len() - TACHYON_FRAGMENTED_HEADER_SIZE;
-                    let src = &fragment[TACHYON_FRAGMENTED_HEADER_SIZE..fragment.len()];
-                    let dest = &mut buffer[offset..offset + frag_body_len];
-                    dest.copy_from_slice(src);
+            let Some(fragment) = map.get_mut(&seq) else {
+                self.received.remove(&header.fragment_group);
+                return Err(());
+            };
 
-                    offset += frag_body_len;
-                }
-                None => {
-                    self.received.remove(&header.fragment_group);
-                    return Err(());
-                }
-            }
+            let frag_body_len = fragment.len() - TACHYON_FRAGMENTED_HEADER_SIZE;
+            let src = &fragment[TACHYON_FRAGMENTED_HEADER_SIZE..fragment.len()];
+            let dest = &mut buffer[offset..offset + frag_body_len];
+            dest.copy_from_slice(src);
+
+            offset += frag_body_len;
+
             seq = Sequence::next_sequence(seq);
         }
 
         self.received.remove(&header.fragment_group);
-        return Ok(buffer);
+
+        Ok(buffer)
     }
 
     pub fn receive_fragment(&mut self, data: &[u8], length: usize) -> (bool, bool) {
         let header = Header::read_fragmented(data);
-        if !self.received.contains_key(&header.fragment_group) {
-            self.received
-                .insert(header.fragment_group, FxHashMap::default());
-            self.received_at
-                .insert(header.fragment_group, Instant::now());
+        if let Entry::Vacant(e) = self.received.entry(header.fragment_group) {
+            e.insert(FxHashMap::default());
+            self.received_at.insert(header.fragment_group, Instant::now());
         }
+
         if let Some(map) = self.received.get_mut(&header.fragment_group) {
-            let slice = &data[0..length as usize];
+            let slice = &data[0..length];
 
             let mut fragment: Vec<u8> = vec![0; length];
             fragment[..].copy_from_slice(slice);
-            if !map.contains_key(&header.sequence) {
-                map.insert(header.sequence, fragment);
+            if let Entry::Vacant(e) = map.entry(header.sequence) {
+                e.insert(fragment);
             }
 
             return (true, map.len() == header.fragment_count as usize);
         }
 
-        return (false, false);
+        (false, false)
     }
 
     pub fn create_fragments(
@@ -128,49 +111,56 @@ impl Fragmentation {
     ) -> Vec<u16> {
         let slice = &data[0..length];
 
-        let chunks = slice.chunks(FRAG_SIZE as usize);
+        let chunks = slice.chunks(FRAG_SIZE);
         let fragment_count = chunks.len() as u16;
         let mut fragments: Vec<u16> = Vec::new();
         let group = self.get_next_group();
 
+        let mut start_sequence_filled = false;
         let mut start_sequence = 0;
-        let mut index = 0;
 
         for chunk in chunks {
             let chunk_len = chunk.len();
             let fragment_len = chunk_len + TACHYON_FRAGMENTED_HEADER_SIZE;
 
-            match sender.create_send_buffer(fragment_len) {
-                Some(send_buffer) => {
-                    let sequence = send_buffer.sequence;
-                    if index == 0 {
-                        start_sequence = sequence;
-                    }
+            let Some(send_buffer) = sender.create_send_buffer(fragment_len) else {
+                fragments.clear();
+                return fragments;
+            };
 
-                    let fragment_header = Header::create_fragmented(
-                        sequence,
-                        channel,
-                        group,
-                        start_sequence,
-                        fragment_count,
-                    );
-                    fragment_header.write_fragmented(&mut send_buffer.byte_buffer.get_mut());
-
-                    send_buffer.byte_buffer.get_mut()[TACHYON_FRAGMENTED_HEADER_SIZE
-                        ..chunk_len + TACHYON_FRAGMENTED_HEADER_SIZE]
-                        .copy_from_slice(chunk);
-                    fragments.push(sequence);
-
-                    index += 1;
-                }
-                None => {
-                    fragments.clear();
-                    return fragments;
-                }
+            let sequence = send_buffer.sequence;
+            if !start_sequence_filled {
+                start_sequence = sequence;
+                start_sequence_filled = true;
             }
+
+            let fragment_header = Header::create_fragmented(
+                sequence,
+                channel,
+                group,
+                start_sequence,
+                fragment_count,
+            );
+
+            fragment_header.write_fragmented(send_buffer.byte_buffer.get_mut());
+            send_buffer.byte_buffer.get_mut()[TACHYON_FRAGMENTED_HEADER_SIZE
+                ..chunk_len + TACHYON_FRAGMENTED_HEADER_SIZE]
+                .copy_from_slice(chunk);
+
+            fragments.push(sequence);
         }
 
-        return fragments;
+        fragments
+    }
+}
+
+impl Default for Fragmentation {
+    fn default() -> Self {
+        Self {
+            next_group: 1,
+            received: FxHashMap::default(),
+            received_at: FxHashMap::default(),
+        }
     }
 }
 
@@ -190,7 +180,7 @@ mod tests {
         assert!(frag.received_at.contains_key(&1));
         assert_eq!(1, frag.received_at.len());
 
-        let now = Instant::now() - Duration::new(6, 0);
+        let now = Instant::now().checked_sub(Duration::from_secs(6)).unwrap();
         frag.received_at.insert(2, now);
         frag.expire_groups();
         assert!(!frag.received_at.contains_key(&2));
@@ -209,7 +199,7 @@ mod tests {
         assert_eq!(2, result.len());
         let buffer = sender.get_send_buffer(result[0]).unwrap();
         assert_eq!(1210, buffer.byte_buffer.length);
-        let header = Header::read_fragmented(&buffer.byte_buffer.get());
+        let header = Header::read_fragmented(buffer.byte_buffer.get());
         assert_eq!(MESSAGE_TYPE_FRAGMENT, header.message_type);
         assert_eq!(1, header.sequence);
         assert_eq!(1, header.fragment_start_sequence);
@@ -218,7 +208,7 @@ mod tests {
         let buffer = sender.get_send_buffer(result[1]).unwrap();
         assert_eq!(210, buffer.byte_buffer.length);
 
-        let header = Header::read_fragmented(&buffer.byte_buffer.get());
+        let header = Header::read_fragmented(buffer.byte_buffer.get());
         assert_eq!(MESSAGE_TYPE_FRAGMENT, header.message_type);
         assert_eq!(2, header.sequence);
     }
@@ -232,33 +222,33 @@ mod tests {
         let created = frag.create_fragments(&mut sender, 1, &data[..], data.len());
         let send_buffer = sender.get_send_buffer(created[0]).unwrap();
         let complete = frag.receive_fragment(
-            &send_buffer.byte_buffer.get(),
+            send_buffer.byte_buffer.get(),
             send_buffer.byte_buffer.length,
         );
         assert!(!complete.1);
 
         let send_buffer = sender.get_send_buffer(created[1]).unwrap();
         let complete = frag.receive_fragment(
-            &send_buffer.byte_buffer.get(),
+            send_buffer.byte_buffer.get(),
             send_buffer.byte_buffer.length,
         );
         assert!(!complete.1);
 
         let send_buffer = sender.get_send_buffer(created[2]).unwrap();
         let complete = frag.receive_fragment(
-            &send_buffer.byte_buffer.get(),
+            send_buffer.byte_buffer.get(),
             send_buffer.byte_buffer.length,
         );
         assert!(complete.1);
 
-        let header = Header::read_fragmented(&send_buffer.byte_buffer.get());
+        let header = Header::read_fragmented(send_buffer.byte_buffer.get());
         let assembled = frag.assemble(header);
         assert!(assembled.is_ok());
         let assembled_data = assembled.unwrap();
         assert_eq!(2500, assembled_data.len());
 
-        for i in 0..assembled_data.len() {
-            assert_eq!(3, assembled_data[i]);
+        for byte in assembled_data {
+            assert_eq!(3, byte);
         }
     }
 }
