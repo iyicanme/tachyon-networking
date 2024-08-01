@@ -274,7 +274,7 @@ impl Tachyon {
 
         header.write(&mut send_buffer);
 
-        self.socket.send_to(address, &send_buffer, send_buffer.len());
+        let _ = self.socket.send_to(address, &send_buffer, send_buffer.len());
     }
 }
 

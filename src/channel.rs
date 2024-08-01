@@ -1,5 +1,6 @@
 use rustc_hash::FxHashMap;
 
+use crate::{SEND_ERROR_UNKNOWN, TachyonSendResult};
 use crate::fragmentation::Fragmentation;
 use crate::header::{
     Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_NACK, MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE,
@@ -12,7 +13,6 @@ use crate::network_address::NetworkAddress;
 use crate::receiver::Receiver;
 use crate::send_buffer_manager::SendBufferManager;
 use crate::tachyon_socket::TachyonSocket;
-use crate::{TachyonSendResult, SEND_ERROR_UNKNOWN};
 
 pub static mut NONE_SEND_DATA: &'static mut [u8] = &mut [0; TACHYON_HEADER_SIZE];
 const NACK_REDUNDANCY_DEFAULT: u32 = 1;
@@ -390,20 +390,16 @@ impl Channel {
                     let message_type = reader.read_u8(&send_buffer.byte_buffer.get());
 
                     // rewrite to MESSAGE_TYPE_RELIABLE.
-                    if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
+                    let _ = if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
                         let send_len = Channel::rewrite_reliable_nack_to_reliable(
                             &mut self.resend_rewrite_buffer,
                             &send_buffer.byte_buffer.get(),
                         );
 
-                        socket.send_to(*address, &self.resend_rewrite_buffer, send_len);
+                        socket.send_to(*address, &self.resend_rewrite_buffer, send_len)
                     } else {
-                        socket.send_to(
-                            *address,
-                            &send_buffer.byte_buffer.get(),
-                            send_buffer.byte_buffer.length,
-                        );
-                    }
+                        socket.send_to(*address, &send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length)
+                    };
 
                     self.stats.resent += 1;
                 }
