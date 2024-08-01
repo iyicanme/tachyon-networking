@@ -16,55 +16,68 @@ pub struct Nack {
 }
 
 impl Nack {
-    pub fn write(nacks: &[Nack], data: &mut [u8], position: u64) -> u64 {
-        if nacks.len() == 0 {
+    pub fn write(nacks: &[Self], data: &mut [u8], position: u64) -> u64 {
+        if nacks.is_empty() {
             return 0;
         }
+
         let mut buffer = IntBuffer {
             index: position as usize,
         };
+
         buffer.write_u8(nacks.len() as u8, data);
+
         for nack in nacks {
             buffer.write_u16(nack.start_sequence, data);
             buffer.write_u32(nack.flags, data);
         }
-        return buffer.index as u64;
+
+        buffer.index as u64
     }
 
     pub fn read_single(sequences: &mut Vec<u16>, data: &[u8], position: usize) {
         let mut buffer = IntBuffer { index: position };
 
-        let mut nack = Nack::default();
-        nack.start_sequence = buffer.read_u16(data);
-        if nack.start_sequence == 0 {
+        let start_sequence = buffer.read_u16(data);
+        if start_sequence == 0 {
             return;
         }
 
-        nack.flags = buffer.read_u32(data);
+        let flags = buffer.read_u32(data);
+
+        let nack = Self {
+            start_sequence,
+            flags,
+            ..Self::default()
+        };
+
         nack.get_nacked(sequences);
     }
 
-    pub fn write_single(nack: &Nack, data: &mut [u8], position: usize) -> usize {
+    pub fn write_single(nack: &Self, data: &mut [u8], position: usize) -> usize {
         let mut buffer = IntBuffer { index: position };
 
         buffer.write_u16(nack.start_sequence, data);
         buffer.write_u32(nack.flags, data);
-        return buffer.index;
+
+        buffer.index
     }
 
-    pub fn write_varint(nacks: &[Nack], data: &mut [u8], position: u64) -> u64 {
-        if nacks.len() == 0 {
+    pub fn write_varint(nacks: &[Self], data: &mut [u8], position: u64) -> u64 {
+        if nacks.is_empty() {
             return 0;
         }
 
         let mut cursor = Cursor::new(data);
         cursor.set_position(position);
+
         let _ = cursor.write_varint(nacks.len() as u16).unwrap();
         for nack in nacks {
             cursor.write_varint(nack.start_sequence).unwrap();
             cursor.write_varint(nack.flags).unwrap();
         }
-        return cursor.position();
+
+        cursor.position()
     }
 
     pub fn read_varint(sequences: &mut Vec<u16>, data: &[u8], position: usize) {
@@ -73,9 +86,15 @@ impl Nack {
 
         let count = ReadVarint::<u32>::read_varint(&mut cursor).unwrap();
         for _ in 0..count {
-            let mut nack = Nack::default();
-            nack.start_sequence = ReadVarint::<u16>::read_varint(&mut cursor).unwrap();
-            nack.flags = ReadVarint::<u32>::read_varint(&mut cursor).unwrap();
+            let start_sequence = ReadVarint::<u16>::read_varint(&mut cursor).unwrap();
+            let flags = ReadVarint::<u32>::read_varint(&mut cursor).unwrap();
+
+            let nack = Self {
+                start_sequence,
+                flags,
+                ..Self::default()
+            };
+
             nack.get_nacked(sequences);
         }
     }
@@ -84,11 +103,18 @@ impl Nack {
         let mut buffer = IntBuffer {
             index: position as usize,
         };
+
         let count = buffer.read_u8(data);
         for _ in 0..count {
-            let mut nack = Nack::default();
-            nack.start_sequence = buffer.read_u16(data);
-            nack.flags = buffer.read_u32(data);
+            let start_sequence = buffer.read_u16(data);
+            let flags = buffer.read_u32(data);
+
+            let nack = Self {
+                start_sequence,
+                flags,
+                ..Self::default()
+            };
+
             nack.get_nacked(sequences);
         }
     }
@@ -108,13 +134,12 @@ impl Nack {
         }
     }
 
+    #[must_use]
     pub fn is_nacked(&self, sequence: u16) -> bool {
-        if self.start_sequence == sequence {
-            return true;
-        }
-        return self.is_flagged(sequence);
+        self.start_sequence == sequence || self.is_flagged(sequence)
     }
 
+    #[must_use]
     pub fn is_flagged(&self, sequence: u16) -> bool {
         let mut seq = Sequence::previous_sequence(self.start_sequence);
         for i in 0i32..32 {
@@ -123,7 +148,8 @@ impl Nack {
             }
             seq = Sequence::previous_sequence(seq);
         }
-        return false;
+
+        false
     }
 
     pub fn set_flagged(&mut self, sequence: u16) {
@@ -137,9 +163,11 @@ impl Nack {
         }
     }
 
-    pub fn get_bits(&self, index: i32) -> bool {
+    #[must_use]
+    pub const fn get_bits(&self, index: i32) -> bool {
         let mask = 1 << index;
-        return (self.flags & mask) == mask;
+
+        (self.flags & mask) == mask
     }
 
     pub fn set_bits(&mut self, index: i32, value: bool) {
@@ -155,12 +183,14 @@ impl Nack {
 #[cfg(test)]
 mod tests {
     use crate::nack::Nack;
-    use crate::sequence::Sequence;
 
     #[test]
     fn test_flagged() {
-        let mut nack = Nack::default();
-        nack.start_sequence = 33;
+        let mut nack = Nack {
+            start_sequence: 33,
+            ..Nack::default()
+        };
+
         nack.set_flagged(32);
         assert!(nack.is_flagged(32));
         assert!(nack.get_bits(0));
@@ -175,8 +205,11 @@ mod tests {
 
     #[test]
     fn test_flagged_wrapped() {
-        let mut nack = Nack::default();
-        nack.start_sequence = 0;
+        let mut nack = Nack {
+            start_sequence: 0,
+            ..Nack::default()
+        };
+        
         nack.set_flagged(65534);
         assert!(nack.is_flagged(65534));
 
@@ -188,14 +221,11 @@ mod tests {
     }
 
     fn create_full_nack(start: u16) -> Nack {
-        let mut nack = Nack::default();
-        nack.start_sequence = start;
-        let mut seq = Sequence::previous_sequence(nack.start_sequence);
-        for _ in 0..32 {
-            nack.set_flagged(seq);
-            seq = Sequence::previous_sequence(seq);
+        Nack {
+            start_sequence: start,
+            flags: u32::MAX,
+            ..Nack::default()
         }
-        return nack;
     }
 
     #[test]
@@ -218,12 +248,12 @@ mod tests {
     fn test_write_read() {
         let mut data: Vec<u8> = vec![0; 1024];
         let mut sequences_out: Vec<u16> = Vec::new();
-        let mut nacks: Vec<Nack> = Vec::new();
-        nacks.push(create_full_nack(1));
-        nacks.push(create_full_nack(34));
+
+        let nacks = vec![create_full_nack(1), create_full_nack(34)];
 
         Nack::write_varint(&nacks, &mut data[..], 0);
         Nack::read_varint(&mut sequences_out, &data[..], 0);
+        
         assert_eq!(66, sequences_out.len());
     }
 }
