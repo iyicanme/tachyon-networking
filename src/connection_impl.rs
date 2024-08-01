@@ -49,32 +49,25 @@ impl Tachyon {
         self.fire_connection_event(CONNECTION_REMOVED_EVENT, address);
     }
 
+    #[must_use]
     pub fn get_connection(&self, address: NetworkAddress) -> Option<&Connection> {
         return self.connections.get(&address);
     }
 
+    #[must_use]
     pub fn get_connection_by_identity(&self, id: u32) -> Option<&Connection> {
-        if let Some(address) = self.identity_to_address_map.get(&id) {
-            return self.get_connection(*address);
-        }
-        return None;
+        self.identity_to_address_map.get(&id).and_then(|a| self.get_connection(*a))
     }
 
-    pub fn get_connections(&mut self, max: i32) -> Vec<Connection> {
-        let mut list: Vec<Connection> = Vec::new();
-        let result_count = std::cmp::min(self.connections.len(), max as usize);
-
-        let mut count = 0;
+    pub fn get_connections(&mut self, max: usize) -> Vec<Connection> {
         let since_start = self.time_since_start();
-        for conn in self.connections.values_mut() {
-            conn.since_last_received = since_start - conn.received_at;
-            list.push(*conn);
-            count += 1;
-            if count >= result_count {
-                break;
-            }
-        }
-        return list;
+        self.connections.values_mut()
+            .take(max)
+            .map(|c| {
+                c.since_last_received = since_start - c.received_at;
+                *c
+            })
+            .collect()
     }
 
     pub fn fire_identity_event(
@@ -121,22 +114,22 @@ impl Tachyon {
 
     pub fn validate_and_update_linked_connection(&mut self, address: NetworkAddress) -> bool {
         let since_start = self.time_since_start();
-        if let Some(conn) = self.connections.get_mut(&address) {
-            if conn.identity.id == 0 {
-                return false;
-            }
-            conn.received_at = since_start;
-            return true;
+        let Some(conn) = self.connections.get_mut(&address) else {
+            return false;
+        };
+
+        if conn.identity.id == 0 {
+            return false;
         }
-        return false;
+
+        conn.received_at = since_start;
+
+        true
     }
 
+    #[must_use]
     pub fn get_connection_identity(&self, address: NetworkAddress) -> Identity {
-        if let Some(conn) = self.connections.get(&address) {
-            return conn.identity;
-        } else {
-            return Identity::default();
-        }
+        self.connections.get(&address).map(|c| c.identity).unwrap_or_default()
     }
 
     pub fn remove_connection_by_identity(&mut self, id: u32) {
@@ -153,28 +146,30 @@ impl Tachyon {
     }
 
     pub fn try_link_identity(&mut self, address: NetworkAddress, id: u32, session_id: u32) -> bool {
-        if let Some(current_session_id) = self.identities.get(&id) {
-            if session_id != *current_session_id {
-                return false;
-            }
+        let Some(current_session_id) = self.identities.get(&id) else {
+            return false;
+        };
 
-            let identity = self.get_connection_identity(address);
-            if identity.id == id && identity.session_id == *current_session_id {
-                return true;
-            }
+        if session_id != *current_session_id {
+            return false;
+        }
 
-            self.remove_connection_by_identity(id);
-            let identity = Identity {
-                id: id,
-                session_id: session_id,
-                linked: 0,
-            };
-            self.create_connection(address, identity);
-            self.identity_to_address_map.insert(id, address);
-            self.send_identity_linked(address);
+        let identity = self.get_connection_identity(address);
+        if identity.id == id && identity.session_id == *current_session_id {
             return true;
         }
-        return false;
+
+        self.remove_connection_by_identity(id);
+        let identity = Identity {
+            id,
+            session_id,
+            linked: 0,
+        };
+        self.create_connection(address, identity);
+        self.identity_to_address_map.insert(id, address);
+        self.send_identity_linked(address);
+
+        true
     }
 
     pub fn try_unlink_identity(
@@ -183,18 +178,20 @@ impl Tachyon {
         id: u32,
         session_id: u32,
     ) -> bool {
-        if let Some(current_session_id) = self.identities.get(&id) {
-            if session_id != *current_session_id {
-                return false;
-            }
-
-            self.remove_connection_by_identity(id);
-            self.identity_to_address_map.remove(&id);
+        let Some(current_session_id) = self.identities.get(&id) else {
             self.send_identity_unlinked(address);
-            return true;
+            return false;
+        };
+
+        if session_id != *current_session_id {
+            return false;
         }
+
+        self.remove_connection_by_identity(id);
+        self.identity_to_address_map.remove(&id);
         self.send_identity_unlinked(address);
-        return false;
+
+        true
     }
 
     pub fn client_identity_update(&mut self) {
@@ -218,23 +215,20 @@ impl Tachyon {
             return;
         }
 
-        let since_last = Instant::now() - self.last_identity_link_request;
-        if since_last.as_millis() > IDENTITY_SEND_INTERVAL {
+        if self.last_identity_link_request.elapsed().as_millis() > IDENTITY_SEND_INTERVAL {
             self.last_identity_link_request = Instant::now();
             self.send_link_identity(self.identity.id, self.identity.session_id);
         }
     }
 
-    pub fn can_send(&self) -> bool {
-        if self.socket.is_server {
-            return true;
-        } else {
-            if self.config.use_identity == 1 {
-                return self.identity.linked == 1;
-            } else {
-                return true;
-            }
-        }
+    #[must_use]
+    pub const fn can_send(&self) -> bool {
+        // Server can always send
+        self.socket.is_server
+            // Client can always send if identity is not used,
+            || self.config.use_identity != 1
+            // or if it is linked when identity is being used
+            || self.identity.linked == 1
     }
 
     pub fn send_link_identity(&self, id: u32, session_id: u32) {
@@ -270,14 +264,17 @@ impl Tachyon {
         session_id: u32,
         address: NetworkAddress,
     ) {
-        let mut header = ConnectionHeader::default();
-        header.message_type = message_type;
-        header.id = id;
-        header.session_id = session_id;
         let mut send_buffer: Vec<u8> = vec![0; 12];
+
+        let header = ConnectionHeader {
+            message_type,
+            id,
+            session_id,
+        };
+
         header.write(&mut send_buffer);
-        self.socket
-            .send_to(address, &send_buffer, send_buffer.len());
+
+        self.socket.send_to(address, &send_buffer, send_buffer.len());
     }
 }
 
@@ -349,14 +346,19 @@ mod tests {
 
     #[test]
     fn test_can_send() {
-        let mut config = TachyonConfig::default();
-        config.use_identity = 1;
+        let config = TachyonConfig {
+            use_identity: 1,
+            ..TachyonConfig::default()
+        };
+
         let mut tach = Tachyon::create(config);
+
         tach.socket.is_server = true;
         assert!(tach.can_send());
 
         tach.socket.is_server = false;
         assert!(!tach.can_send());
+
         tach.identity.linked = 1;
         assert!(tach.can_send());
     }
