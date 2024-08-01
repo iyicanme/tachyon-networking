@@ -11,15 +11,15 @@ pub struct Connection {
 }
 
 impl Connection {
+    #[must_use]
     pub fn create(address: NetworkAddress, tachyon_id: u16) -> Self {
-        let conn = Connection {
+        Self {
             identity: Identity::default(),
-            address: address,
+            address,
             tachyon_id,
             received_at: 0,
             since_last_received: 0,
-        };
-        return conn;
+        }
     }
 }
 
@@ -33,12 +33,14 @@ pub struct Identity {
 }
 
 impl Identity {
-    pub fn is_valid(&self) -> bool {
-        return self.id > 0 && self.session_id > 0;
+    #[must_use]
+    pub const fn is_valid(&self) -> bool {
+        self.id > 0 && self.session_id > 0
     }
 
-    pub fn is_linked(&self) -> bool {
-        return self.is_valid() && self.linked == 1;
+    #[must_use]
+    pub const fn is_linked(&self) -> bool {
+        self.is_valid() && self.linked == 1
     }
 
     pub fn set_linked(&mut self, linked: u32) {
