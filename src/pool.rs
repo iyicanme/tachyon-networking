@@ -6,10 +6,10 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use synchronoise::CountdownEvent;
 
+use crate::{Tachyon, TachyonConfig, TachyonSendResult};
 use crate::connection::Connection;
 use crate::int_buffer::LengthPrefixed;
 use crate::network_address::NetworkAddress;
-use crate::{Tachyon, TachyonConfig, TachyonSendResult};
 
 #[derive(Clone, Copy, Default)]
 pub struct SendTarget {
@@ -51,6 +51,7 @@ pub struct Pool {
 }
 
 impl Pool {
+    #[must_use]
     pub fn create(max_servers: u8, receive_buffer_len: u32, out_buffer_len: u32) -> Self {
         let receive_buffers: ArrayQueue<Vec<u8>> = ArrayQueue::new(max_servers as usize);
         let out_buffers: ArrayQueue<OutBuffer> = ArrayQueue::new(max_servers as usize);
@@ -72,7 +73,7 @@ impl Pool {
 
         let in_use: ArrayQueue<Tachyon> = ArrayQueue::new(max_servers as usize);
 
-        let pool = Pool {
+        Self {
             next_id: 0,
             max_servers,
             receive_buffer_len,
@@ -85,8 +86,7 @@ impl Pool {
             counter: None,
             connections_by_identity: FxHashMap::default(),
             connections_by_address: FxHashMap::default(),
-        };
-        return pool;
+        }
     }
 
     pub fn create_server(
@@ -103,17 +103,14 @@ impl Pool {
         }
 
         let mut tachyon = Tachyon::create(config);
-        match tachyon.bind(address) {
-            true => {
-                tachyon.id = id;
-                self.servers.insert(id, tachyon);
 
-                return true;
-            }
-            false => {
-                return false;
-            }
+        let bound = tachyon.bind(address);
+        if bound {
+            tachyon.id = id;
+            self.servers.insert(id, tachyon);
         }
+
+        bound
     }
 
     pub fn set_identity(&mut self, server_id: u16, id: u32, session_id: u32, on_self: u32) {
@@ -141,26 +138,21 @@ impl Pool {
         }
     }
 
+    #[must_use]
     pub fn get_server_having_connection(&self, address: NetworkAddress) -> u16 {
-        if let Some(conn) = self.connections_by_address.get(&address) {
-            return conn.tachyon_id;
-        } else {
-            return 0;
-        }
+        self.connections_by_address.get(&address).map(|c| c.tachyon_id).unwrap_or_default()
     }
 
+    #[must_use]
     pub fn get_server_having_identity(&self, identity_id: u32) -> u16 {
-        if let Some(conn) = self.connections_by_identity.get(&identity_id) {
-            return conn.tachyon_id;
-        } else {
-            return 0;
-        }
+        self.connections_by_identity.get(&identity_id).map(|c| c.tachyon_id).unwrap_or_default()
     }
 
+    #[must_use]
     pub fn get_available_server(&self) -> Option<PoolServerRef> {
         let mut best: Option<PoolServerRef> = None;
-        let mut low = 10000;
-        for (_id, server) in &self.servers {
+        let mut low = 10_000;
+        for server in self.servers.values() {
             let conn_count = server.connections.len();
             if conn_count < low && server.socket.socket.is_some() {
                 low = conn_count;
@@ -171,7 +163,7 @@ impl Pool {
             }
         }
 
-        return best;
+        best
     }
 
     pub fn get_server(&mut self, id: u16) -> Option<&mut Tachyon> {
@@ -186,9 +178,9 @@ impl Pool {
         length: i32,
     ) -> TachyonSendResult {
         if target.identity_id > 0 {
-            return self.send_to_identity(channel_id, target.identity_id, data, length);
+            self.send_to_identity(channel_id, target.identity_id, data, length)
         } else {
-            return self.send_to_address(channel_id, target.address, data, length);
+            self.send_to_address(channel_id, target.address, data, length)
         }
     }
 
@@ -199,16 +191,19 @@ impl Pool {
         data: &mut [u8],
         length: i32,
     ) -> TachyonSendResult {
-        if let Some(conn) = self.connections_by_identity.get(&id) {
-            if let Some(server) = self.servers.get_mut(&conn.tachyon_id) {
-                if channel_id == 0 {
-                    return server.send_unreliable(conn.address, data, length as usize);
-                } else {
-                    return server.send_reliable(channel_id, conn.address, data, length as usize);
-                }
-            }
+        let Some(conn) = self.connections_by_identity.get(&id) else {
+            return TachyonSendResult::default();
+        };
+
+        let Some(server) = self.servers.get_mut(&conn.tachyon_id) else {
+            return TachyonSendResult::default();
+        };
+
+        if channel_id == 0 {
+            server.send_unreliable(conn.address, data, length as usize)
+        } else {
+            server.send_reliable(channel_id, conn.address, data, length as usize)
         }
-        return TachyonSendResult::default();
     }
 
     fn send_to_address(
@@ -218,50 +213,53 @@ impl Pool {
         data: &mut [u8],
         length: i32,
     ) -> TachyonSendResult {
-        if let Some(conn) = self.connections_by_address.get(&address) {
-            if let Some(sender) = self.servers.get_mut(&conn.tachyon_id) {
-                if channel_id == 0 {
-                    return sender.send_unreliable(address, data, length as usize);
-                } else {
-                    return sender.send_reliable(channel_id, address, data, length as usize);
-                }
-            }
+        let Some(conn) = self.connections_by_address.get(&address) else {
+            return TachyonSendResult::default();
+        };
+
+        let Some(sender) = self.servers.get_mut(&conn.tachyon_id)else {
+            return TachyonSendResult::default();
+        };
+
+        if channel_id == 0 {
+            sender.send_unreliable(address, data, length as usize)
+        } else {
+            sender.send_reliable(channel_id, address, data, length as usize)
         }
-        return TachyonSendResult::default();
     }
 
     pub fn take_published(&mut self) -> Option<Vec<u8>> {
-        return self.published.pop_front();
+        self.published.pop_front()
     }
 
     fn move_received_to_published(&mut self) -> i32 {
         let mut count = 0;
         for _ in 0..self.receive_queue.len() {
-            if let Some(mut receive_queue) = self.receive_queue.pop() {
-                for value in receive_queue.drain(..) {
-                    self.published.push_back(value);
-                    count += 1;
-                }
-                self.receive_queue.push(receive_queue).unwrap_or_default();
+            if let Some(receive_queue) = self.receive_queue.pop() {
+                count += receive_queue.len() as i32;
+                self.published.extend(receive_queue);
+
+                self.receive_queue.push(VecDeque::new()).unwrap_or_default();
             }
         }
-        return count;
+
+        count
     }
 
     fn receive_server(
         server: &mut Tachyon,
         receive_queue: &mut VecDeque<Vec<u8>>,
-        receive_buffer: &mut Vec<u8>,
+        receive_buffer: &mut [u8],
     ) {
-        for _ in 0..100000 {
+        for _ in 0..100_000 {
             let res = server.receive_loop(receive_buffer);
             if res.length == 0 || res.error > 0 {
                 break;
-            } else {
-                let mut message: Vec<u8> = vec![0; res.length as usize];
-                message.copy_from_slice(&receive_buffer[0..res.length as usize]);
-                receive_queue.push_back(message);
             }
+
+            let mut message: Vec<u8> = vec![0; res.length as usize];
+            message.copy_from_slice(&receive_buffer[0..res.length as usize]);
+            receive_queue.push_back(message);
         }
     }
 
@@ -287,30 +285,28 @@ impl Pool {
             let signal = counter.clone();
 
             rayon::spawn(move || {
-                match in_use.pop() {
-                    Some(mut server) => {
-                        if let Some(mut receive_queue) = receive_queue_clone.pop() {
-                            if let Some(mut receive_buffer) = receive_buffers_clone.pop() {
-                                Pool::receive_server(
-                                    &mut server,
-                                    &mut receive_queue,
-                                    &mut receive_buffer,
-                                );
-                                receive_buffers_clone
-                                    .push(receive_buffer)
-                                    .unwrap_or_default();
-                            }
-                            receive_queue_clone.push(receive_queue).unwrap_or_default();
+                if let Some(mut server) = in_use.pop() {
+                    if let Some(mut receive_queue) = receive_queue_clone.pop() {
+                        if let Some(mut receive_buffer) = receive_buffers_clone.pop() {
+                            Self::receive_server(
+                                &mut server,
+                                &mut receive_queue,
+                                &mut receive_buffer,
+                            );
+                            receive_buffers_clone
+                                .push(receive_buffer)
+                                .unwrap_or_default();
                         }
-                        in_use.push(server).unwrap_or(());
+                        receive_queue_clone.push(receive_queue).unwrap_or_default();
                     }
-                    None => {}
+                    in_use.push(server).unwrap_or(());
                 }
                 signal.decrement().unwrap();
             });
         }
         self.counter = Some(counter);
-        return true;
+        
+        true
     }
 
     pub fn finish_receive(&mut self) -> (u32, i32) {
@@ -332,7 +328,8 @@ impl Pool {
             }
             None => {}
         }
-        return (server_count, message_count);
+
+        (server_count, message_count)
     }
 
     // receive blocking, also heap allocates into the queue
@@ -343,7 +340,7 @@ impl Pool {
 
             if let Some(mut receive_queue) = receive_queue_clone.pop() {
                 if let Some(mut receive_buffer) = receive_buffers_clone.pop() {
-                    Pool::receive_server(server, &mut receive_queue, &mut receive_buffer);
+                    Self::receive_server(server, &mut receive_queue, &mut receive_buffer);
                     receive_buffers_clone
                         .push(receive_buffer)
                         .unwrap_or_default();
@@ -365,7 +362,7 @@ impl Pool {
                 out_buffer.count = 0;
 
                 if let Some(mut receive_buffer) = receive_buffers_clone.pop() {
-                    Pool::receive_server_into_out_buffer(
+                    Self::receive_server_into_out_buffer(
                         server,
                         &mut out_buffer,
                         &mut receive_buffer,
@@ -382,23 +379,19 @@ impl Pool {
     fn receive_server_into_out_buffer(
         server: &mut Tachyon,
         out_buffer: &mut OutBuffer,
-        receive_buffer: &mut Vec<u8>,
+        receive_buffer: &mut [u8],
     ) {
         let mut writer = LengthPrefixed::default();
-        for _ in 0..100000 {
+        for _ in 0..100_000 {
             let res = server.receive_loop(receive_buffer);
             if res.length == 0 || res.error > 0 {
                 out_buffer.bytes_written = writer.writer.index as u32;
                 break;
-            } else {
-                writer.write(
-                    res.channel,
-                    res.address,
-                    &receive_buffer[0..res.length as usize],
-                    &mut out_buffer.data,
-                );
-                out_buffer.count += 1;
             }
+
+            writer.write(res.channel, res.address, &receive_buffer[0..res.length as usize], &mut out_buffer.data);
+
+            out_buffer.count += 1;
         }
     }
 
@@ -426,7 +419,8 @@ impl Pool {
                 return result;
             }
         }
-        return result;
+
+        result
     }
 }
 
@@ -464,7 +458,7 @@ mod tests {
 
         let count: usize = 2000;
         let msg_len = 64;
-        let msg_value = 234873;
+        let msg_value = 234_873;
 
         for _ in 0..count {
             let mut writer = IntBuffer { index: 0 };
@@ -484,7 +478,7 @@ mod tests {
         pool.receive_blocking_out_buffer();
 
         let elapsed = now.elapsed();
-        println!("Elapsed: {:.2?}", elapsed);
+        println!("Elapsed: {elapsed:.2?}");
 
         // should have 3 out buffers to read
         let mut receive_buffer: Vec<u8> = vec![0; 1024 * 1024 * 4];
@@ -507,7 +501,7 @@ mod tests {
             let len = range.end - range.start;
             //println!("len:{0} address:{1}", len, address);
 
-            assert_eq!(msg_len, len as usize);
+            assert_eq!(msg_len, len);
             let slice = &receive_buffer[range];
 
             let mut value_reader = IntBuffer { index: 0 };
@@ -564,7 +558,7 @@ mod tests {
 
         let count = 200;
         let msg_len = 64;
-        let msg_value = 234873;
+        let msg_value = 234_873;
         for _ in 0..count {
             let mut writer = IntBuffer { index: 0 };
             writer.write_u32(msg_value, &mut client1.send_buffer);
@@ -598,6 +592,6 @@ mod tests {
         assert_eq!(0, res.1);
 
         let elapsed = now.elapsed();
-        println!("Elapsed: {:.2?}", elapsed);
+        println!("Elapsed: {elapsed:.2?}");
     }
 }
