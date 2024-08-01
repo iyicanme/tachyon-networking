@@ -8,6 +8,7 @@ use crate::header::MESSAGE_TYPE_RELIABLE;
 use crate::int_buffer::IntBuffer;
 use crate::network_address::NetworkAddress;
 
+#[derive(Eq, PartialEq)]
 pub enum CreateConnectResult {
     Success,
     Error,
