@@ -24,6 +24,7 @@ pub struct Receiver {
 }
 
 impl Receiver {
+    #[must_use]
     pub fn create(is_ordered: bool, receive_window_size: u32) -> Self {
         let mut buffered: SequenceBuffer<ByteBuffer> = SequenceBuffer {
             values: Vec::new(),
@@ -38,7 +39,7 @@ impl Receiver {
             partition_by: RECEIVE_BUFFER_SIZE,
         };
 
-        let receiver = Receiver {
+        Self {
             is_ordered,
             receive_window_size,
             last_sequence: 0,
@@ -51,46 +52,43 @@ impl Receiver {
             skipped_sequences: 0,
             nack_queue: VecDeque::new(),
             buffer_pool: ByteBufferPool::default(),
-        };
-
-        return receiver;
+        }
     }
 
+    #[must_use]
     pub fn default(is_ordered: bool) -> Self {
-        return Receiver::create(is_ordered, RECEIVE_WINDOW_SIZE_DEFAULT);
+        Self::create(is_ordered, RECEIVE_WINDOW_SIZE_DEFAULT)
     }
 
-    pub fn calculate_current_in_window(current: u16, last: u16) -> u16 {
+    #[must_use]
+    pub const fn calculate_current_in_window(current: u16, last: u16) -> u16 {
         if current == last {
             return current;
         }
 
-        let mut start: i32 = (last as i32 - RECEIVE_WINDOW_SIZE_DEFAULT as i32) as i32;
+        let mut start = last as i32 - RECEIVE_WINDOW_SIZE_DEFAULT as i32;
         if start < 0 {
-            start = std::u16::MAX as i32 + start;
+            start += u16::MAX as i32;
         }
 
         if Sequence::is_greater_then(start as u16, current) {
-            return start as u16;
+            start as u16
         } else {
-            return current;
+            current
         }
     }
-    pub fn should_increment_current(current: u16, last: u16, receive_window_size: u32) -> bool {
+    #[must_use]
+    pub const fn should_increment_current(current: u16, last: u16, receive_window_size: u32) -> bool {
         if current == last {
             return false;
         }
 
-        let mut start: i32 = (last as i32 - receive_window_size as i32) as i32;
+        let mut start = last as i32 - receive_window_size as i32;
         if start < 0 {
-            start = std::u16::MAX as i32 + start;
+            start += u16::MAX as i32;
         }
 
-        if Sequence::is_greater_then(start as u16, current) {
-            return true;
-        } else {
-            return false;
-        }
+        Sequence::is_greater_then(start as u16, current)
     }
 
     pub fn return_buffer(&mut self, byte_buffer: ByteBuffer) {
@@ -98,15 +96,16 @@ impl Receiver {
     }
 
     pub fn take_published(&mut self) -> Option<ByteBuffer> {
-        return self.published.pop_front();
+        self.published.pop_front()
     }
 
     fn is_buffered(&self, sequence: u16) -> bool {
-        return self.buffered.is_some(sequence);
+        self.buffered.is_some(sequence)
     }
 
+    #[must_use]
     pub fn is_received(&self, sequence: u16) -> bool {
-        return self.received.is_some(sequence);
+        self.received.is_some(sequence)
     }
 
     fn set_received(&mut self, sequence: u16) {
@@ -125,7 +124,7 @@ impl Receiver {
 
     pub fn receive_packet(&mut self, sequence: u16, data: &[u8], length: usize) -> bool {
         // if the difference between current/last is greater then the window, increment current.
-        if Receiver::should_increment_current(
+        if Self::should_increment_current(
             self.current_sequence,
             self.last_sequence,
             self.receive_window_size,
@@ -153,14 +152,14 @@ impl Receiver {
         // resends can be higher then current and already received.
         if self.is_received(sequence) {
             return false;
-        } else {
-            self.set_buffered(sequence, data, length);
-            self.set_received(sequence);
         }
+
+        self.set_buffered(sequence, data, length);
+        self.set_received(sequence);
 
         self.publish();
 
-        return true;
+        true
     }
 
     pub fn publish(&mut self) {
@@ -184,20 +183,16 @@ impl Receiver {
                 }
 
                 if self.is_buffered(seq) {
-                    match self.buffered.take(seq) {
-                        Some(byte_buffer) => {
-                            self.published.push_back(byte_buffer);
-                        }
-                        None => {}
+                    if let Some(byte_buffer) = self.buffered.take(seq) {
+                        self.published.push_back(byte_buffer);
                     }
                 }
+            } else if self.is_ordered {
+                break;
             } else {
-                if self.is_ordered {
-                    break;
-                } else {
-                    step_sequence = false;
-                }
+                step_sequence = false;
             }
+
             seq = Sequence::next_sequence(seq);
             if seq == end {
                 break;
@@ -254,10 +249,12 @@ impl Receiver {
                 continue;
             }
 
-            let mut current = Nack::default();
-            current.start_sequence = seq;
             nacked_count += 1;
-            current.nacked_count = nacked_count;
+            let mut current = Nack {
+                start_sequence: seq,
+                nacked_count,
+                ..Nack::default()
+            };
 
             for i in 0..32 {
                 seq = Sequence::previous_sequence(seq);
@@ -279,7 +276,8 @@ impl Receiver {
 
             seq = Sequence::previous_sequence(seq);
         }
-        return nacked_count;
+
+        nacked_count
     }
 }
 
@@ -294,25 +292,15 @@ mod tests {
                 return true;
             }
         }
-        return false;
+
+        false
     }
 
-    fn assert_nack(receiver: &mut Receiver, sequence: u16) {
-        if receiver.is_received(sequence)
-            || sequence >= receiver.last_sequence
-            || sequence <= receiver.current_sequence
-        {
-            if is_nacked(receiver, sequence) {
-                panic!("{0} is nacked", sequence);
-            } else {
-                //println!("{0} not nacked", sequence);
-            }
+    fn assert_nack(receiver: &Receiver, sequence: u16) {
+        if receiver.is_received(sequence) || sequence >= receiver.last_sequence || sequence <= receiver.current_sequence {
+            assert!(!is_nacked(receiver, sequence), "{sequence} is nacked");
         } else {
-            if !is_nacked(receiver, sequence) {
-                panic!("{0} not nacked", sequence);
-            } else {
-                //println!("{0} nacked", sequence);
-            }
+            assert!(is_nacked(receiver, sequence), "{sequence} not nacked");
         }
     }
 
@@ -435,15 +423,9 @@ mod tests {
         let data: Vec<u8> = vec![0; 1024];
 
         let mut sequence = 1;
-        for _ in 1..200000 {
+        for _ in 1..200_000 {
             let _receive_result = channel.receive_packet(sequence, &data[..], 32);
-            if channel.current_sequence != sequence {
-                print!(
-                    "{0} {1} {2}\n",
-                    sequence, channel.current_sequence, channel.last_sequence
-                );
-                panic!();
-            }
+            assert_eq!(channel.current_sequence, sequence, "{0} {1} {2}", sequence, channel.current_sequence, channel.last_sequence);
             assert!(channel.take_published().is_some());
 
             sequence = Sequence::next_sequence(sequence);
