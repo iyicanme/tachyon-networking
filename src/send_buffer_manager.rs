@@ -41,26 +41,18 @@ impl SendBufferManager {
     }
 
     pub fn get_send_buffer(&mut self, sequence: u16) -> Option<&mut SendBuffer> {
-        match self.buffers.get_mut(sequence) {
-            Some(send_buffer) => {
-                return Some(send_buffer);
-            }
-            None => {
-                return None;
-            }
-        }
+        self.buffers.get_mut(sequence)
     }
 
     pub fn expire(&mut self) {
-        let mut expired: Vec<u16> = Vec::new();
+        let expired = self.buffers
+            .values
+            .iter()
+            .flatten()
+            .filter(|b| b.created_at.elapsed().as_millis() > EXPIRE)
+            .map(|b| b.sequence)
+            .collect::<Vec<_>>();
 
-        for value in &self.buffers.values {
-            if let Some(buffer) = value {
-                if buffer.created_at.elapsed().as_millis() > EXPIRE {
-                    expired.push(buffer.sequence);
-                }
-            }
-        }
         for sequence in expired {
             self.buffers.remove(sequence);
         }
@@ -78,15 +70,7 @@ impl SendBufferManager {
         };
 
         self.buffers.insert(self.current_sequence, buffer);
-
-        match self.buffers.get_mut(self.current_sequence) {
-            Some(buffer) => {
-                return Some(buffer);
-            }
-            None => {
-                return None;
-            }
-        }
+        self.get_send_buffer(self.current_sequence)
     }
 
     pub fn create_send_buffer(&mut self, length: usize) -> Option<&mut SendBuffer> {
@@ -172,7 +156,7 @@ mod tests {
         let buffer = buffers.create_send_buffer(32);
         let buffer = buffer.unwrap();
         let sequence = buffer.sequence;
-        let now = Instant::now() - Duration::new(6, 0);
+        let now = Instant::now().checked_sub(Duration::from_secs(6)).unwrap();
         buffer.created_at = now;
 
         assert!(buffers.buffers.is_some(sequence));
