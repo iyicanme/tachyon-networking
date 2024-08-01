@@ -74,7 +74,7 @@ impl<T> SequenceBuffer<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::tachyon::sequence_buffer::SequenceBuffer;
+    use crate::sequence_buffer::SequenceBuffer;
 
     #[test]
     fn basic_test() {

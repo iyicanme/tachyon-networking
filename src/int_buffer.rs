@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use super::network_address::NetworkAddress;
+use crate::network_address::NetworkAddress;
 
 pub struct IntBuffer {
     pub index: usize,
@@ -111,7 +111,7 @@ impl LengthPrefixed {
 
 #[cfg(test)]
 mod tests {
-    use crate::tachyon::int_buffer::IntBuffer;
+    use crate::int_buffer::IntBuffer;
 
     #[test]
     fn test_4bit() {

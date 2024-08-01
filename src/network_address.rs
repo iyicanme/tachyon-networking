@@ -1,7 +1,5 @@
-use std::{
-    hash::{Hash, Hasher},
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-};
+use std::hash::{Hash, Hasher};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[derive(Eq, Default, Clone, Copy)]
 #[repr(C)]

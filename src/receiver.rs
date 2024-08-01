@@ -1,12 +1,10 @@
 use std::collections::VecDeque;
 
-use super::{
-    byte_buffer_pool::{ByteBuffer, ByteBufferPool},
-    channel::RECEIVE_WINDOW_SIZE_DEFAULT,
-    nack::Nack,
-    sequence::*,
-    sequence_buffer::SequenceBuffer,
-};
+use crate::byte_buffer_pool::{ByteBuffer, ByteBufferPool};
+use crate::channel::RECEIVE_WINDOW_SIZE_DEFAULT;
+use crate::nack::Nack;
+use crate::sequence::Sequence;
+use crate::sequence_buffer::SequenceBuffer;
 
 const RECEIVE_BUFFER_SIZE: u16 = 1024;
 
@@ -287,8 +285,8 @@ impl Receiver {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::tachyon::receiver::*;
+    use crate::receiver::Receiver;
+    use crate::sequence::Sequence;
 
     pub fn is_nacked(receiver: &Receiver, sequence: u16) -> bool {
         for nack in &receiver.nack_list {

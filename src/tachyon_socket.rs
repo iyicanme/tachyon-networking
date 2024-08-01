@@ -1,14 +1,12 @@
-use std::{
-    io,
-    net::{Ipv4Addr, SocketAddrV4, UdpSocket},
-};
+use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 
-use rand::{prelude::StdRng, Rng, SeedableRng};
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use socket2::{Domain, Socket, Type};
 
-use super::{
-    header::MESSAGE_TYPE_RELIABLE, int_buffer::IntBuffer, network_address::NetworkAddress,
-};
+use crate::header::MESSAGE_TYPE_RELIABLE;
+use crate::int_buffer::IntBuffer;
+use crate::network_address::NetworkAddress;
 
 pub enum CreateConnectResult {
     Success,
@@ -179,7 +177,7 @@ impl TachyonSocket {
         match &self.socket {
             Some(socket) => {
                 let slice = &data[0..length];
-                let socket_result: io::Result<usize>;
+                let socket_result: std::io::Result<usize>;
 
                 if address.port == 0 {
                     socket_result = socket.send(slice);

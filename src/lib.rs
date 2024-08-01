@@ -1,3 +1,28 @@
+use std::time::{Duration, Instant};
+
+use rustc_hash::FxHashMap;
+
+use crate::channel::{Channel, ChannelConfig, ChannelStats};
+use crate::connection::{Connection, Identity};
+use crate::connection_impl::{
+    ConnectionEventCallback, IdentityEventCallback, IDENTITY_LINKED_EVENT, IDENTITY_UNLINKED_EVENT,
+    LINK_IDENTITY_EVENT, UNLINK_IDENTITY_EVENT,
+};
+use crate::fragmentation::Fragmentation;
+use crate::header::{
+    ConnectionHeader, Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_IDENTITY_LINKED,
+    MESSAGE_TYPE_IDENTITY_UNLINKED, MESSAGE_TYPE_LINK_IDENTITY, MESSAGE_TYPE_NACK,
+    MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE, MESSAGE_TYPE_RELIABLE_WITH_NACK,
+    MESSAGE_TYPE_UNLINK_IDENTITY, MESSAGE_TYPE_UNRELIABLE,
+};
+use crate::network_address::NetworkAddress;
+use crate::pool::SendTarget;
+use crate::receive_result::{
+    ReceiveResult, TachyonReceiveResult, RECEIVE_ERROR_CHANNEL, RECEIVE_ERROR_UNKNOWN,
+};
+use crate::tachyon_socket::{CreateConnectResult, SocketReceiveResult, TachyonSocket};
+use crate::unreliable_sender::UnreliableSender;
+
 pub mod byte_buffer_pool;
 pub mod channel;
 pub mod connection;
@@ -24,30 +49,6 @@ mod connection_impl;
 // additional stress/scale testing
 #[cfg(test)]
 pub mod tachyon_test;
-
-use std::time::Duration;
-use std::time::Instant;
-
-use rustc_hash::FxHashMap;
-
-use self::channel::*;
-use self::connection::*;
-use self::connection_impl::ConnectionEventCallback;
-use self::connection_impl::IdentityEventCallback;
-use self::connection_impl::IDENTITY_LINKED_EVENT;
-use self::connection_impl::IDENTITY_UNLINKED_EVENT;
-use self::connection_impl::LINK_IDENTITY_EVENT;
-use self::connection_impl::UNLINK_IDENTITY_EVENT;
-use self::fragmentation::*;
-use self::header::*;
-use self::network_address::NetworkAddress;
-use self::pool::SendTarget;
-use self::receive_result::ReceiveResult;
-use self::receive_result::TachyonReceiveResult;
-use self::receive_result::RECEIVE_ERROR_CHANNEL;
-use self::receive_result::RECEIVE_ERROR_UNKNOWN;
-use self::tachyon_socket::*;
-use self::unreliable_sender::UnreliableSender;
 
 pub const SEND_ERROR_CHANNEL: u32 = 2;
 pub const SEND_ERROR_SOCKET: u32 = 1;
@@ -641,15 +642,16 @@ impl Tachyon {
 
 #[cfg(test)]
 mod tests {
-
-    use serial_test::serial;
-
-    use crate::tachyon::tachyon_test::TachyonTest;
-
-    use super::*;
+    use crate::channel::ChannelConfig;
+    use crate::header::TACHYON_HEADER_SIZE;
+    use crate::network_address::NetworkAddress;
+    use crate::pool::SendTarget;
+    use crate::receive_result::{RECEIVE_ERROR_CHANNEL, RECEIVE_ERROR_UNKNOWN};
+    use crate::tachyon_test::TachyonTest;
+    use crate::{Tachyon, TachyonConfig, SEND_ERROR_LENGTH};
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_connect_before_bind() {
         let address = NetworkAddress::test_address();
         let mut buffer: Vec<u8> = vec![0; 1024];
@@ -672,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_server_receive_invalid_without_bind() {
         let mut buffer: Vec<u8> = vec![0; 1024];
         let config = TachyonConfig::default();
@@ -682,7 +684,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_reliable() {
         // reliable messages just work with message bodies, headers are all internal
 
@@ -709,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_unconfigured_channel_fails() {
         let mut test = TachyonTest::default();
         let channel_config = ChannelConfig::default_ordered();
@@ -726,7 +728,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_configured_channel() {
         let mut test = TachyonTest::default();
         let channel_config = ChannelConfig::default_ordered();
@@ -744,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_unreliable() {
         let mut test = TachyonTest::default();
         test.connect();

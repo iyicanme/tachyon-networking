@@ -123,12 +123,9 @@ impl ByteBufferPool {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::tachyon::byte_buffer_pool::{
-        ByteBuffer, BYTE_BUFFER_SIZE_DEFAULT, POOL_SIZE_DEFAULT,
+    use crate::byte_buffer_pool::{
+        ByteBuffer, ByteBufferPool, BYTE_BUFFER_SIZE_DEFAULT, POOL_SIZE_DEFAULT,
     };
-
-    use super::ByteBufferPool;
 
     #[test]
     fn get_return_within_limits() {

@@ -1,12 +1,12 @@
 use std::time::Instant;
 
-use super::connection::{Connection, Identity};
-use super::header::{
+use crate::connection::{Connection, Identity};
+use crate::header::{
     ConnectionHeader, MESSAGE_TYPE_IDENTITY_LINKED, MESSAGE_TYPE_IDENTITY_UNLINKED,
     MESSAGE_TYPE_LINK_IDENTITY, MESSAGE_TYPE_UNLINK_IDENTITY,
 };
-use super::network_address::NetworkAddress;
-use super::Tachyon;
+use crate::network_address::NetworkAddress;
+use crate::Tachyon;
 
 const IDENTITY_SEND_INTERVAL: u128 = 300;
 
@@ -282,13 +282,10 @@ impl Tachyon {
 
 #[cfg(test)]
 mod tests {
-
-    use serial_test::serial;
-
-    use crate::tachyon::{
-        connection::Identity, network_address::NetworkAddress, tachyon_test::TachyonTest, Tachyon,
-        TachyonConfig,
-    };
+    use crate::connection::Identity;
+    use crate::network_address::NetworkAddress;
+    use crate::tachyon_test::TachyonTest;
+    use crate::{Tachyon, TachyonConfig};
 
     #[test]
     fn test_connect() {
@@ -364,7 +361,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_link_flow() {
         let mut test = TachyonTest::default();
         test.client.config.use_identity = 1;
@@ -395,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_link_fail_flow() {
         let mut test = TachyonTest::default();
         test.client.config.use_identity = 1;

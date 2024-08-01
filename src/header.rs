@@ -1,4 +1,4 @@
-use super::int_buffer::IntBuffer;
+use crate::int_buffer::IntBuffer;
 
 pub const MESSAGE_TYPE_UNRELIABLE: u8 = 0;
 pub const MESSAGE_TYPE_RELIABLE: u8 = 1;

@@ -1,4 +1,4 @@
-use super::network_address::NetworkAddress;
+use crate::network_address::NetworkAddress;
 
 pub const RECEIVE_ERROR_UNKNOWN: u32 = 1;
 pub const RECEIVE_ERROR_CHANNEL: u32 = 2;

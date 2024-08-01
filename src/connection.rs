@@ -1,4 +1,4 @@
-use super::network_address::NetworkAddress;
+use crate::network_address::NetworkAddress;
 
 #[derive(Clone, Copy)]
 #[repr(C)]

@@ -1,20 +1,18 @@
 use rustc_hash::FxHashMap;
 
-use super::{
-    fragmentation::Fragmentation,
-    header::{
-        Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_NACK, MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE,
-        MESSAGE_TYPE_RELIABLE_WITH_NACK, TACHYON_FRAGMENTED_HEADER_SIZE, TACHYON_HEADER_SIZE,
-        TACHYON_NACKED_HEADER_SIZE,
-    },
-    int_buffer::IntBuffer,
-    nack::Nack,
-    network_address::NetworkAddress,
-    receiver::Receiver,
-    send_buffer_manager::SendBufferManager,
-    tachyon_socket::TachyonSocket,
-    TachyonSendResult, SEND_ERROR_UNKNOWN,
+use crate::fragmentation::Fragmentation;
+use crate::header::{
+    Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_NACK, MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE,
+    MESSAGE_TYPE_RELIABLE_WITH_NACK, TACHYON_FRAGMENTED_HEADER_SIZE, TACHYON_HEADER_SIZE,
+    TACHYON_NACKED_HEADER_SIZE,
 };
+use crate::int_buffer::IntBuffer;
+use crate::nack::Nack;
+use crate::network_address::NetworkAddress;
+use crate::receiver::Receiver;
+use crate::send_buffer_manager::SendBufferManager;
+use crate::tachyon_socket::TachyonSocket;
+use crate::{TachyonSendResult, SEND_ERROR_UNKNOWN};
 
 pub static mut NONE_SEND_DATA: &'static mut [u8] = &mut [0; TACHYON_HEADER_SIZE];
 const NACK_REDUNDANCY_DEFAULT: u32 = 1;
@@ -465,14 +463,9 @@ impl Channel {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::tachyon::{
-        channel::ChannelConfig,
-        header::{Header, MESSAGE_TYPE_RELIABLE, MESSAGE_TYPE_RELIABLE_WITH_NACK},
-        network_address::NetworkAddress,
-    };
-
-    use super::Channel;
+    use crate::channel::{Channel, ChannelConfig};
+    use crate::header::{Header, MESSAGE_TYPE_RELIABLE, MESSAGE_TYPE_RELIABLE_WITH_NACK};
+    use crate::network_address::NetworkAddress;
 
     #[test]
     fn test_rewrite_nack_to_reliable() {

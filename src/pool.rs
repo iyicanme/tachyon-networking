@@ -1,14 +1,15 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::collections::VecDeque;
+use std::sync::Arc;
 
 use crossbeam::queue::ArrayQueue;
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use synchronoise::CountdownEvent;
 
-use super::{
-    connection::Connection, int_buffer::LengthPrefixed, network_address::NetworkAddress, Tachyon,
-    TachyonConfig, TachyonSendResult,
-};
+use crate::connection::Connection;
+use crate::int_buffer::LengthPrefixed;
+use crate::network_address::NetworkAddress;
+use crate::{Tachyon, TachyonConfig, TachyonSendResult};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -435,20 +436,16 @@ impl Pool {
 
 #[cfg(test)]
 mod tests {
-    use serial_test::serial;
-
-    use crate::tachyon::{
-        int_buffer::{IntBuffer, LengthPrefixed},
-        network_address::NetworkAddress,
-        tachyon_test::TachyonTestClient,
-        TachyonConfig,
-    };
     use std::time::Instant;
 
-    use super::Pool;
+    use crate::int_buffer::{IntBuffer, LengthPrefixed};
+    use crate::network_address::NetworkAddress;
+    use crate::pool::Pool;
+    use crate::tachyon_test::TachyonTestClient;
+    use crate::TachyonConfig;
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_blocking_receive() {
         let mut pool = Pool::create(40, 1024 * 1024, 1024 * 1024 * 4);
         let config = TachyonConfig::default();
@@ -535,7 +532,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial]
     fn test_receive() {
         let mut pool = Pool::create(4, 1024 * 1024, 1024 * 1024 * 4);
         let config = TachyonConfig::default();

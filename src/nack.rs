@@ -2,7 +2,8 @@ use std::io::Cursor;
 
 use varuint::{ReadVarint, WriteVarint};
 
-use super::{int_buffer::IntBuffer, sequence::Sequence};
+use crate::int_buffer::IntBuffer;
+use crate::sequence::Sequence;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -153,9 +154,8 @@ impl Nack {
 
 #[cfg(test)]
 mod tests {
-    use crate::tachyon::sequence::Sequence;
-
-    use super::Nack;
+    use crate::nack::Nack;
+    use crate::sequence::Sequence;
 
     #[test]
     fn test_flagged() {

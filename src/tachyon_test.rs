@@ -1,12 +1,11 @@
-use core::time;
-use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
-use serial_test::serial;
-
-use crate::tachyon::header::*;
-use crate::tachyon::receiver::*;
-use crate::tachyon::*;
+use crate::header::MESSAGE_TYPE_RELIABLE;
+use crate::network_address::NetworkAddress;
+use crate::pool::SendTarget;
+use crate::receive_result::TachyonReceiveResult;
+use crate::receiver::Receiver;
+use crate::{Tachyon, TachyonConfig, TachyonSendResult};
 
 pub struct TachyonTestClient {
     pub client_address: NetworkAddress,
@@ -251,7 +250,7 @@ fn send_receive(
 }
 
 #[test]
-#[serial]
+#[serial_test::serial]
 fn general_stress() {
     let address = NetworkAddress::test_address();
     let client_address = NetworkAddress::default();
@@ -286,7 +285,7 @@ fn general_stress() {
     let mut client_remote = NetworkAddress::default();
     for _ in 0..loop_count {
         if sleep_in_loop {
-            thread::sleep(time::Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(10));
             send_receive(
                 true,
                 true,
@@ -381,7 +380,7 @@ fn general_stress() {
 }
 
 #[test]
-#[serial]
+#[serial_test::serial]
 fn many_clients() {
     let address = NetworkAddress::test_address();
 

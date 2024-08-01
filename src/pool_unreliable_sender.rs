@@ -1,13 +1,11 @@
 use rustc_hash::FxHashMap;
 
-use super::{
-    connection::Connection,
-    ffi::copy_send_result,
-    network_address::NetworkAddress,
-    pool::{Pool, SendTarget},
-    unreliable_sender::UnreliableSender,
-    TachyonSendResult,
-};
+use crate::connection::Connection;
+use crate::ffi::copy_send_result;
+use crate::network_address::NetworkAddress;
+use crate::pool::{Pool, SendTarget};
+use crate::unreliable_sender::UnreliableSender;
+use crate::TachyonSendResult;
 
 pub struct PoolUnreliableSender {
     pub identity_to_conn_map: FxHashMap<u32, Connection>,

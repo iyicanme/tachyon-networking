@@ -1,10 +1,8 @@
-use std::{io, net::UdpSocket};
+use std::net::UdpSocket;
 
-use super::{
-    header::{Header, MESSAGE_TYPE_UNRELIABLE},
-    network_address::NetworkAddress,
-    TachyonSendResult, SEND_ERROR_CHANNEL, SEND_ERROR_LENGTH,
-};
+use crate::header::{Header, MESSAGE_TYPE_UNRELIABLE};
+use crate::network_address::NetworkAddress;
+use crate::{TachyonSendResult, SEND_ERROR_CHANNEL, SEND_ERROR_LENGTH};
 
 const UNRELIABLE_BUFFER_LEN: usize = 1024 * 16;
 
@@ -59,7 +57,7 @@ impl UnreliableSender {
         match &self.socket {
             Some(socket) => {
                 let slice = &self.send_buffer[0..length];
-                let socket_result: io::Result<usize>;
+                let socket_result: std::io::Result<usize>;
 
                 if address.port == 0 {
                     socket_result = socket.send(slice);

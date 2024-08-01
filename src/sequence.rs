@@ -35,7 +35,7 @@ impl Sequence {
 
 #[cfg(test)]
 mod tests {
-    use crate::tachyon::sequence::Sequence;
+    use crate::sequence::Sequence;
 
     #[test]
     fn test_basic() {
