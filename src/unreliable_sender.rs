@@ -1,8 +1,8 @@
 use std::net::UdpSocket;
 
+use crate::{SEND_ERROR_CHANNEL, SEND_ERROR_LENGTH, TachyonSendResult};
 use crate::header::{Header, MESSAGE_TYPE_UNRELIABLE};
 use crate::network_address::NetworkAddress;
-use crate::{TachyonSendResult, SEND_ERROR_CHANNEL, SEND_ERROR_LENGTH};
 
 const UNRELIABLE_BUFFER_LEN: usize = 1024 * 16;
 
@@ -13,8 +13,9 @@ pub struct UnreliableSender {
 }
 
 impl UnreliableSender {
+    #[must_use]
     pub fn create(socket: Option<UdpSocket>) -> Self {
-        UnreliableSender {
+        Self {
             socket,
             send_buffer: vec![0; UNRELIABLE_BUFFER_LEN],
         }
@@ -23,60 +24,48 @@ impl UnreliableSender {
     pub fn send(
         &mut self,
         address: NetworkAddress,
-        data: &mut [u8],
+        data: &[u8],
         body_len: usize,
     ) -> TachyonSendResult {
-        let mut result = TachyonSendResult::default();
-
         if body_len < 1 {
-            result.error = SEND_ERROR_LENGTH;
-            return result;
+            return TachyonSendResult { error: SEND_ERROR_LENGTH, ..TachyonSendResult::default() };
         }
 
-        if !self.socket.is_some() {
-            result.error = SEND_ERROR_CHANNEL;
-            return result;
+        if self.socket.is_none() {
+            return TachyonSendResult { error: SEND_ERROR_CHANNEL, ..TachyonSendResult::default() };
         }
 
         // copy to send buffer at +1 offset for message_type
-        self.send_buffer[1..body_len + 1].copy_from_slice(&data[0..body_len]);
+        self.send_buffer[1..=body_len].copy_from_slice(&data[0..body_len]);
         let length = body_len + 1;
 
-        let mut header = Header::default();
-        header.message_type = MESSAGE_TYPE_UNRELIABLE;
+        let header = Header {
+            message_type: MESSAGE_TYPE_UNRELIABLE,
+            ..Header::default()
+        };
+
         header.write_unreliable(&mut self.send_buffer);
-
         let sent_len = self.send_to(address, length);
-        result.sent_len = sent_len as u32;
-        result.header = header;
 
-        return result;
+        TachyonSendResult {
+            sent_len: sent_len as u32,
+            header,
+            ..TachyonSendResult::default()
+        }
     }
 
     fn send_to(&self, address: NetworkAddress, length: usize) -> usize {
-        match &self.socket {
-            Some(socket) => {
-                let slice = &self.send_buffer[0..length];
-                let socket_result: std::io::Result<usize>;
+        let Some(socket) = &self.socket else {
+            return 0;
+        };
 
-                if address.port == 0 {
-                    socket_result = socket.send(slice);
-                } else {
-                    socket_result = socket.send_to(slice, address.to_socket_addr());
-                }
+        let slice = &self.send_buffer[0..length];
+        let socket_result = if address.port == 0 {
+            socket.send(slice)
+        } else {
+            socket.send_to(slice, address.to_socket_addr())
+        };
 
-                match socket_result {
-                    Ok(size) => {
-                        return size;
-                    }
-                    Err(_) => {
-                        return 0;
-                    }
-                }
-            }
-            None => {
-                return 0;
-            }
-        }
+        socket_result.unwrap_or_default()
     }
 }
