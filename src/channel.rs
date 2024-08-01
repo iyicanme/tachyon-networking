@@ -18,9 +18,7 @@ pub static mut NONE_SEND_DATA: &'static mut [u8] = &mut [0; TACHYON_HEADER_SIZE]
 const NACK_REDUNDANCY_DEFAULT: u32 = 1;
 pub const RECEIVE_WINDOW_SIZE_DEFAULT: u32 = 512;
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-#[derive(Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct ChannelStats {
     pub sent: u64,
     pub received: u64,
@@ -89,9 +87,7 @@ nones_sent:{} nones_received:{} nones_accepted:{} skipped_sequences:{}\n\n",
     }
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct ChannelConfig {
     pub receive_window_size: u32,
     pub nack_redundancy: u32,

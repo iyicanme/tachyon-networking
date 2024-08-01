@@ -1,6 +1,5 @@
 use crate::network_address::NetworkAddress;
 
-#[repr(C)]
 #[derive(Default, Clone, Copy)]
 pub struct TachyonReceiveResult {
     pub channel: u16,

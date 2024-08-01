@@ -11,23 +11,19 @@ use crate::int_buffer::LengthPrefixed;
 use crate::network_address::NetworkAddress;
 use crate::{Tachyon, TachyonConfig, TachyonSendResult};
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct SendTarget {
     pub identity_id: u32,
     pub address: NetworkAddress,
 }
 
 #[derive(Default, Clone, Copy)]
-#[repr(C)]
 pub struct PoolServerRef {
     pub address: NetworkAddress,
     pub id: u16,
 }
 
 #[derive(Default, Clone, Copy)]
-#[repr(C)]
 pub struct OutBufferCounts {
     pub bytes_written: u32,
     pub count: u32,

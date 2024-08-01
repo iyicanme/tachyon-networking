@@ -5,9 +5,7 @@ use varuint::{ReadVarint, WriteVarint};
 use crate::int_buffer::IntBuffer;
 use crate::sequence::Sequence;
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct Nack {
     pub start_sequence: u16,
     pub flags: u32,

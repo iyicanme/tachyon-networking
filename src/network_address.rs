@@ -2,7 +2,6 @@ use std::hash::{Hash, Hasher};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 #[derive(Eq, Default, Clone, Copy)]
-#[repr(C)]
 pub struct NetworkAddress {
     pub a: u16,
     pub b: u16,

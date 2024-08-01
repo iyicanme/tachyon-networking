@@ -1,7 +1,6 @@
 use crate::network_address::NetworkAddress;
 
 #[derive(Clone, Copy)]
-#[repr(C)]
 pub struct Connection {
     pub address: NetworkAddress,
     pub identity: Identity,
@@ -24,7 +23,6 @@ impl Connection {
 }
 
 #[derive(Clone, Copy)]
-#[repr(C)]
 #[derive(Default)]
 pub struct Identity {
     pub id: u32,

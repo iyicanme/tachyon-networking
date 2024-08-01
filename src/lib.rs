@@ -59,9 +59,7 @@ pub const SEND_ERROR_IDENTITY: u32 = 6;
 
 const SOCKET_RECEIVE_BUFFER_LEN: usize = 1024 * 1024;
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-#[derive(Default, Debug)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct TachyonStats {
     pub channel_stats: ChannelStats,
     pub packets_dropped: u64,
@@ -83,16 +81,13 @@ impl std::fmt::Display for TachyonStats {
 }
 
 #[derive(Default, Clone, Copy)]
-#[repr(C)]
 pub struct TachyonConfig {
     pub use_identity: u32,
     pub drop_packet_chance: u64,
     pub drop_reliable_only: u32,
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct TachyonSendResult {
     pub sent_len: u32,
     pub error: u32,
