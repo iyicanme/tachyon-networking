@@ -4,8 +4,9 @@ pub struct SequenceBuffer<T> {
 }
 
 impl<T> SequenceBuffer<T> {
-    pub fn sequence_to_index(&self, sequence: u16) -> usize {
-        return (sequence % self.partition_by) as usize;
+    #[must_use]
+    pub const fn sequence_to_index(&self, sequence: u16) -> usize {
+        (sequence % self.partition_by) as usize
     }
 
     pub fn insert(&mut self, sequence: u16, value: T) -> Option<&mut T> {
@@ -23,52 +24,30 @@ impl<T> SequenceBuffer<T> {
         self.values[index] = None;
     }
 
+    #[must_use]
     pub fn is_some(&self, sequence: u16) -> bool {
         let index = self.sequence_to_index(sequence);
-        return self.values[index].is_some();
+        self.values[index].is_some()
     }
 
     pub fn take(&mut self, sequence: u16) -> Option<T> {
         let index = self.sequence_to_index(sequence);
-        return self.values[index].take();
+        self.values[index].take()
     }
 
+    #[must_use]
     pub fn get(&self, sequence: u16) -> Option<&T> {
         let index = self.sequence_to_index(sequence);
-        match self.values.get(index) {
-            Some(value) => {
-                let value_ref = value.as_ref();
-                return value_ref;
-            }
-            None => {
-                return None;
-            }
-        }
+        self.get_at_index(index)
     }
 
     pub fn get_at_index(&self, index: usize) -> Option<&T> {
-        match self.values.get(index) {
-            Some(value) => {
-                let value_ref = value.as_ref();
-                return value_ref;
-            }
-            None => {
-                return None;
-            }
-        }
+        self.values.get(index).and_then(Option::as_ref)
     }
 
     pub fn get_mut(&mut self, sequence: u16) -> Option<&mut T> {
         let index = self.sequence_to_index(sequence);
-        match self.values.get_mut(index) {
-            Some(value) => {
-                let value_ref = value.as_mut();
-                return value_ref;
-            }
-            None => {
-                return None;
-            }
-        }
+        self.values.get_mut(index).and_then(Option::as_mut)
     }
 }
 
