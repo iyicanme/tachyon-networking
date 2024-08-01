@@ -1,8 +1,9 @@
 use std::time::Instant;
 
 use crate::connection::{Connection, Identity};
+use crate::connection_header::ConnectionHeader;
 use crate::header::{
-    ConnectionHeader, MESSAGE_TYPE_IDENTITY_LINKED, MESSAGE_TYPE_IDENTITY_UNLINKED,
+    MESSAGE_TYPE_IDENTITY_LINKED, MESSAGE_TYPE_IDENTITY_UNLINKED,
     MESSAGE_TYPE_LINK_IDENTITY, MESSAGE_TYPE_UNLINK_IDENTITY,
 };
 use crate::network_address::NetworkAddress;
@@ -282,10 +283,10 @@ impl Tachyon {
 
 #[cfg(test)]
 mod tests {
+    use crate::{Tachyon, TachyonConfig};
     use crate::connection::Identity;
     use crate::network_address::NetworkAddress;
     use crate::tachyon_test::TachyonTest;
-    use crate::{Tachyon, TachyonConfig};
 
     #[test]
     fn test_connect() {

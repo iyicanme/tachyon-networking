@@ -4,13 +4,14 @@ use rustc_hash::FxHashMap;
 
 use crate::channel::{Channel, ChannelConfig, ChannelStats};
 use crate::connection::{Connection, Identity};
+use crate::connection_header::ConnectionHeader;
 use crate::connection_impl::{
     ConnectionEventCallback, IdentityEventCallback, IDENTITY_LINKED_EVENT, IDENTITY_UNLINKED_EVENT,
     LINK_IDENTITY_EVENT, UNLINK_IDENTITY_EVENT,
 };
 use crate::fragmentation::Fragmentation;
 use crate::header::{
-    ConnectionHeader, Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_IDENTITY_LINKED,
+    Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_IDENTITY_LINKED,
     MESSAGE_TYPE_IDENTITY_UNLINKED, MESSAGE_TYPE_LINK_IDENTITY, MESSAGE_TYPE_NACK,
     MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE, MESSAGE_TYPE_RELIABLE_WITH_NACK,
     MESSAGE_TYPE_UNLINK_IDENTITY, MESSAGE_TYPE_UNRELIABLE,
@@ -47,6 +48,7 @@ mod connection_impl;
 #[cfg(test)]
 pub mod tachyon_test;
 mod tachyon_receive_result;
+mod connection_header;
 
 pub const SEND_ERROR_CHANNEL: u32 = 2;
 pub const SEND_ERROR_SOCKET: u32 = 1;
