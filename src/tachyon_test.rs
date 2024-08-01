@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
+use crate::{Tachyon, TachyonConfig, TachyonSendResult};
 use crate::header::MESSAGE_TYPE_RELIABLE;
 use crate::network_address::NetworkAddress;
 use crate::pool::SendTarget;
-use crate::receive_result::TachyonReceiveResult;
 use crate::receiver::Receiver;
-use crate::{Tachyon, TachyonConfig, TachyonSendResult};
+use crate::tachyon_receive_result::TachyonReceiveResult;
 
 pub struct TachyonTestClient {
     pub client_address: NetworkAddress,

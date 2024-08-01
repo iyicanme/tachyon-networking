@@ -18,8 +18,9 @@ use crate::header::{
 use crate::network_address::NetworkAddress;
 use crate::pool::SendTarget;
 use crate::receive_result::{
-    ReceiveResult, TachyonReceiveResult, RECEIVE_ERROR_CHANNEL, RECEIVE_ERROR_UNKNOWN,
+    ReceiveResult, RECEIVE_ERROR_CHANNEL, RECEIVE_ERROR_UNKNOWN,
 };
+use crate::tachyon_receive_result::TachyonReceiveResult;
 use crate::tachyon_socket::{CreateConnectResult, SocketReceiveResult, TachyonSocket};
 use crate::unreliable_sender::UnreliableSender;
 
@@ -45,6 +46,7 @@ mod connection_impl;
 // additional stress/scale testing
 #[cfg(test)]
 pub mod tachyon_test;
+mod tachyon_receive_result;
 
 pub const SEND_ERROR_CHANNEL: u32 = 2;
 pub const SEND_ERROR_SOCKET: u32 = 1;
