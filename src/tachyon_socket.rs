@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 
-use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 use socket2::{Domain, Socket, Type};
 
 use crate::header::MESSAGE_TYPE_RELIABLE;
@@ -30,23 +30,19 @@ pub struct TachyonSocket {
 }
 
 impl TachyonSocket {
+    #[must_use]
     pub fn create() -> Self {
-        let socket = TachyonSocket {
+        Self {
             address: NetworkAddress::default(),
             is_server: false,
             socket: None,
             rng: SeedableRng::seed_from_u64(32634),
-        };
-        return socket;
+        }
     }
 
+    #[must_use]
     pub fn clone_socket(&self) -> Option<UdpSocket> {
-        match &self.socket {
-            Some(sock) => {
-                return Some(sock.try_clone().unwrap());
-            }
-            None => return None,
-        }
+        self.socket.as_ref()?.try_clone().ok()
     }
 
     pub fn bind_socket(&mut self, naddress: NetworkAddress) -> CreateConnectResult {
@@ -58,19 +54,17 @@ impl TachyonSocket {
         self.address = naddress;
 
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
-        match socket.bind(&address.into()) {
-            Ok(()) => {
-                socket.set_recv_buffer_size(8192 * 256).unwrap();
-                socket.set_nonblocking(true).unwrap();
-                self.socket = Some(socket.into());
-                self.is_server = true;
 
-                return CreateConnectResult::Success;
-            }
-            Err(_) => {
-                return CreateConnectResult::Error;
-            }
-        }
+        let Ok(()) = socket.bind(&address.into()) else {
+            return CreateConnectResult::Error;
+        };
+
+        socket.set_recv_buffer_size(8192 * 256).unwrap();
+        socket.set_nonblocking(true).unwrap();
+        self.socket = Some(socket.into());
+        self.is_server = true;
+
+        CreateConnectResult::Success
     }
 
     pub fn connect_socket(&mut self, naddress: NetworkAddress) -> CreateConnectResult {
@@ -82,48 +76,38 @@ impl TachyonSocket {
         let sock_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
 
-        match socket.bind(&sock_addr.into()) {
-            Ok(()) => {
-                socket.set_recv_buffer_size(8192 * 256).unwrap();
-                socket.set_nonblocking(true).unwrap();
-                let address = naddress.to_socket_addr();
-                let udp_socket: UdpSocket = socket.into();
+        let Ok(()) = socket.bind(&sock_addr.into()) else {
+            return CreateConnectResult::Error;
+        };
 
-                match udp_socket.connect(&address) {
-                    Ok(()) => {
-                        self.socket = Some(udp_socket);
-                        return CreateConnectResult::Success;
-                    }
-                    Err(_) => {
-                        return CreateConnectResult::Error;
-                    }
-                }
-            }
-            Err(_) => {
-                return CreateConnectResult::Error;
-            }
-        }
+        socket.set_recv_buffer_size(8192 * 256).unwrap();
+        socket.set_nonblocking(true).unwrap();
+
+        let address = naddress.to_socket_addr();
+        let udp_socket: UdpSocket = socket.into();
+
+        let Ok(()) = udp_socket.connect(address) else {
+            return CreateConnectResult::Error;
+        };
+
+        self.socket = Some(udp_socket);
+
+        CreateConnectResult::Success
     }
 
-    fn should_drop(&mut self, data: &mut [u8], drop_chance: u64, drop_reliable_only: bool) -> bool {
-        if drop_chance > 0 {
-            let r = self.rng.gen_range(1..100);
-            if r <= drop_chance {
-                let mut can_drop = true;
-                if drop_reliable_only {
-                    let mut reader = IntBuffer { index: 0 };
-                    let message_type = reader.read_u8(data);
-                    if message_type != MESSAGE_TYPE_RELIABLE {
-                        can_drop = false;
-                    }
-                }
-
-                if can_drop {
-                    return true;
-                }
-            }
+    fn should_drop(&mut self, data: &[u8], drop_chance: u64, drop_reliable_only: bool) -> bool {
+        let r = self.rng.gen_range(1..100);
+        if r > drop_chance {
+            return false;
         }
-        return false;
+
+        let mut reader = IntBuffer { index: 0 };
+        let message_type = reader.read_u8(data);
+
+        // Drop everything
+        !drop_reliable_only
+            // or if drop only reliable and message type is reliable
+            || message_type == MESSAGE_TYPE_RELIABLE
     }
 
     pub fn receive(
@@ -132,71 +116,56 @@ impl TachyonSocket {
         drop_chance: u64,
         drop_reliable_only: bool,
     ) -> SocketReceiveResult {
-        let socket = match &self.socket {
-            Some(v) => v,
-            None => {
-                return SocketReceiveResult::Error;
-            }
+        if self.should_drop(data, drop_chance, drop_reliable_only) {
+            return SocketReceiveResult::Dropped;
+        }
+
+        let Some(socket) = &self.socket else {
+            return SocketReceiveResult::Error;
         };
 
         if self.is_server {
-            match socket.recv_from(data) {
-                Ok((bytes_received, src_addr)) => {
-                    if self.should_drop(data, drop_chance, drop_reliable_only) {
-                        return SocketReceiveResult::Dropped;
-                    }
-                    let address = NetworkAddress::from_socket_addr(src_addr);
-                    return SocketReceiveResult::Success {
-                        bytes_received,
-                        network_address: address,
-                    };
-                }
-                Err(_) => {
-                    return SocketReceiveResult::Empty;
+            Self::recv_server(socket, data)
+        } else {
+            Self::recv_client(socket, data)
+        }
+    }
+
+    fn recv_server(socket: &UdpSocket, data: &mut [u8]) -> SocketReceiveResult {
+        match socket.recv_from(data) {
+            Ok((bytes_received, src_addr)) => {
+                let address = NetworkAddress::from_socket_addr(src_addr);
+                SocketReceiveResult::Success {
+                    bytes_received,
+                    network_address: address,
                 }
             }
-        } else {
-            match socket.recv(data) {
-                Ok(size) => {
-                    if self.should_drop(data, drop_chance, drop_reliable_only) {
-                        return SocketReceiveResult::Dropped;
-                    }
-                    return SocketReceiveResult::Success {
-                        bytes_received: size,
-                        network_address: NetworkAddress::default(),
-                    };
-                }
-                Err(_) => {
-                    return SocketReceiveResult::Empty;
-                }
+            Err(_) => {
+                SocketReceiveResult::Empty
             }
         }
     }
 
+    fn recv_client(socket: &UdpSocket, data: &mut [u8]) -> SocketReceiveResult {
+        socket.recv(data).map_or(
+            SocketReceiveResult::Empty,
+            |size| SocketReceiveResult::Success { bytes_received: size, network_address: NetworkAddress::default() },
+        )
+    }
+
+    #[must_use]
     pub fn send_to(&self, address: NetworkAddress, data: &[u8], length: usize) -> usize {
-        match &self.socket {
-            Some(socket) => {
-                let slice = &data[0..length];
-                let socket_result: std::io::Result<usize>;
+        let Some(socket) = &self.socket else {
+            return 0;
+        };
 
-                if address.port == 0 {
-                    socket_result = socket.send(slice);
-                } else {
-                    socket_result = socket.send_to(slice, address.to_socket_addr());
-                }
+        let slice = &data[0..length];
+        let socket_result = if address.port == 0 {
+            socket.send(slice)
+        } else {
+            socket.send_to(slice, address.to_socket_addr())
+        };
 
-                match socket_result {
-                    Ok(size) => {
-                        return size;
-                    }
-                    Err(_) => {
-                        return 0;
-                    }
-                }
-            }
-            None => {
-                return 0;
-            }
-        }
+        socket_result.unwrap_or_default()
     }
 }
