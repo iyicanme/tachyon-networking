@@ -76,12 +76,22 @@ impl Tachyon {
         return list;
     }
 
-    pub fn fire_identity_event(&self, event_id: u8, address: NetworkAddress, id: u32, session_id: u32) {
+    pub fn fire_identity_event(
+        &self,
+        event_id: u8,
+        address: NetworkAddress,
+        id: u32,
+        session_id: u32,
+    ) {
         if let Some(callback) = self.identity_event_callback {
             let mut conn = Connection::create(address, self.id);
-            conn.identity = Identity {id, session_id, linked: 0 };
+            conn.identity = Identity {
+                id,
+                session_id,
+                linked: 0,
+            };
             if event_id == IDENTITY_LINKED_EVENT {
-               conn.identity.linked = 1; 
+                conn.identity.linked = 1;
             }
             unsafe {
                 callback(event_id, conn);
@@ -128,8 +138,6 @@ impl Tachyon {
         }
     }
 
-    
-
     pub fn remove_connection_by_identity(&mut self, id: u32) {
         let mut addresses: Vec<NetworkAddress> = Vec::new();
 
@@ -142,8 +150,6 @@ impl Tachyon {
             self.remove_connection(addr);
         }
     }
-
-    
 
     pub fn try_link_identity(&mut self, address: NetworkAddress, id: u32, session_id: u32) -> bool {
         if let Some(current_session_id) = self.identities.get(&id) {
@@ -170,7 +176,12 @@ impl Tachyon {
         return false;
     }
 
-    pub fn try_unlink_identity(&mut self, address: NetworkAddress, id: u32, session_id: u32) -> bool {
+    pub fn try_unlink_identity(
+        &mut self,
+        address: NetworkAddress,
+        id: u32,
+        session_id: u32,
+    ) -> bool {
         if let Some(current_session_id) = self.identities.get(&id) {
             if session_id != *current_session_id {
                 return false;
@@ -226,11 +237,21 @@ impl Tachyon {
     }
 
     pub fn send_link_identity(&self, id: u32, session_id: u32) {
-        self.send_identity_message(MESSAGE_TYPE_LINK_IDENTITY, id, session_id,  NetworkAddress::default());
+        self.send_identity_message(
+            MESSAGE_TYPE_LINK_IDENTITY,
+            id,
+            session_id,
+            NetworkAddress::default(),
+        );
     }
 
     pub fn send_unlink_identity(&self, id: u32, session_id: u32) {
-        self.send_identity_message(MESSAGE_TYPE_UNLINK_IDENTITY, id, session_id, NetworkAddress::default());
+        self.send_identity_message(
+            MESSAGE_TYPE_UNLINK_IDENTITY,
+            id,
+            session_id,
+            NetworkAddress::default(),
+        );
     }
 
     pub fn send_identity_linked(&self, address: NetworkAddress) {
@@ -241,14 +262,21 @@ impl Tachyon {
         self.send_identity_message(MESSAGE_TYPE_IDENTITY_UNLINKED, 0, 0, address);
     }
 
-    fn send_identity_message(&self, message_type: u8, id: u32, session_id: u32, address: NetworkAddress) {
+    fn send_identity_message(
+        &self,
+        message_type: u8,
+        id: u32,
+        session_id: u32,
+        address: NetworkAddress,
+    ) {
         let mut header = ConnectionHeader::default();
         header.message_type = message_type;
         header.id = id;
         header.session_id = session_id;
         let mut send_buffer: Vec<u8> = vec![0; 12];
         header.write(&mut send_buffer);
-        self.socket.send_to(address, &send_buffer, send_buffer.len());
+        self.socket
+            .send_to(address, &send_buffer, send_buffer.len());
     }
 }
 
@@ -323,7 +351,6 @@ mod tests {
 
     #[test]
     fn test_can_send() {
-
         let mut config = TachyonConfig::default();
         config.use_identity = 1;
         let mut tach = Tachyon::create(config);

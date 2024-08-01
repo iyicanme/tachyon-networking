@@ -3,21 +3,20 @@ use std::collections::VecDeque;
 pub const BYTE_BUFFER_SIZE_DEFAULT: usize = 1240;
 const POOL_SIZE_DEFAULT: usize = 512;
 
-
 pub struct ByteBuffer {
     data: Vec<u8>,
     pub length: usize,
     pub pooled: bool,
-    pub version: u64
+    pub version: u64,
 }
 
 impl ByteBuffer {
     pub fn create(length: usize) -> Self {
         let byte_buffer = ByteBuffer {
-            data: vec![0;length],
+            data: vec![0; length],
             length: length,
             pooled: false,
-            version: 0
+            version: 0,
         };
         return byte_buffer;
     }
@@ -44,7 +43,7 @@ where
 
 impl<Idx> std::ops::IndexMut<Idx> for ByteBuffer
 where
-    Idx: std::slice::SliceIndex<[u8]>
+    Idx: std::slice::SliceIndex<[u8]>,
 {
     fn index_mut(&mut self, index: Idx) -> &mut Self::Output {
         &mut self.data[index]
@@ -55,11 +54,10 @@ pub struct ByteBufferPool {
     pub buffer_size: usize,
     pool_size: usize,
     buffers: VecDeque<ByteBuffer>,
-    count: usize
+    count: usize,
 }
 
 impl ByteBufferPool {
-
     pub fn default() -> Self {
         let pool = ByteBufferPool::create(BYTE_BUFFER_SIZE_DEFAULT, POOL_SIZE_DEFAULT);
         return pool;
@@ -70,7 +68,7 @@ impl ByteBufferPool {
             buffer_size,
             pool_size: max_buffers,
             buffers: VecDeque::new(),
-            count: 0
+            count: 0,
         };
         return pool;
     }
@@ -97,7 +95,7 @@ impl ByteBufferPool {
                 data: vec![0; length],
                 length: length,
                 pooled: false,
-                version: 0
+                version: 0,
             };
             return buffer;
         }
@@ -108,26 +106,27 @@ impl ByteBufferPool {
                 //pooled.data[0..length].fill(0);
                 pooled.length = length;
                 return pooled;
-            },
+            }
             None => {
                 let data: Vec<u8> = vec![0; self.buffer_size];
                 let buffer = ByteBuffer {
                     data,
                     length: length,
                     pooled: true,
-                    version: 0
+                    version: 0,
                 };
                 return buffer;
-            },
+            }
         }
-    } 
+    }
 }
-
 
 #[cfg(test)]
 mod tests {
 
-    use crate::tachyon::byte_buffer_pool::{ByteBuffer, POOL_SIZE_DEFAULT, BYTE_BUFFER_SIZE_DEFAULT};
+    use crate::tachyon::byte_buffer_pool::{
+        ByteBuffer, BYTE_BUFFER_SIZE_DEFAULT, POOL_SIZE_DEFAULT,
+    };
 
     use super::ByteBufferPool;
 
@@ -146,17 +145,17 @@ mod tests {
 
         let buffer = pool.get_buffer(BYTE_BUFFER_SIZE_DEFAULT);
         pool.return_buffer(buffer);
-       pool.get_buffer(BYTE_BUFFER_SIZE_DEFAULT + 1);
-       assert_eq!(1, pool.len());
+        pool.get_buffer(BYTE_BUFFER_SIZE_DEFAULT + 1);
+        assert_eq!(1, pool.len());
     }
 
     #[test]
     fn will_not_return_over_max_buffer_size() {
         let mut pool = ByteBufferPool::default();
 
-       let buffer = pool.get_buffer(BYTE_BUFFER_SIZE_DEFAULT + 1);
-       assert!(!pool.return_buffer(buffer));
-       assert_eq!(0, pool.len());
+        let buffer = pool.get_buffer(BYTE_BUFFER_SIZE_DEFAULT + 1);
+        assert!(!pool.return_buffer(buffer));
+        assert_eq!(0, pool.len());
     }
 
     #[test]
@@ -167,10 +166,8 @@ mod tests {
             let buffer = ByteBuffer::create(1024);
             assert!(pool.return_buffer(buffer));
         }
- 
-         let buffer = ByteBuffer::create(1024);
-         assert!(!pool.return_buffer(buffer));
+
+        let buffer = ByteBuffer::create(1024);
+        assert!(!pool.return_buffer(buffer));
     }
-
-
 }

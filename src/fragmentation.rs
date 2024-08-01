@@ -98,8 +98,10 @@ impl Fragmentation {
     pub fn receive_fragment(&mut self, data: &[u8], length: usize) -> (bool, bool) {
         let header = Header::read_fragmented(data);
         if !self.received.contains_key(&header.fragment_group) {
-            self.received.insert(header.fragment_group, FxHashMap::default());
-            self.received_at.insert(header.fragment_group, Instant::now());
+            self.received
+                .insert(header.fragment_group, FxHashMap::default());
+            self.received_at
+                .insert(header.fragment_group, Instant::now());
         }
         if let Some(map) = self.received.get_mut(&header.fragment_group) {
             let slice = &data[0..length as usize];
@@ -116,7 +118,13 @@ impl Fragmentation {
         return (false, false);
     }
 
-    pub fn create_fragments(&mut self, sender: &mut SendBufferManager, channel: u8, data: &[u8], length: usize) -> Vec<u16> {
+    pub fn create_fragments(
+        &mut self,
+        sender: &mut SendBufferManager,
+        channel: u8,
+        data: &[u8],
+        length: usize,
+    ) -> Vec<u16> {
         let slice = &data[0..length];
 
         let chunks = slice.chunks(FRAG_SIZE as usize);
@@ -138,10 +146,18 @@ impl Fragmentation {
                         start_sequence = sequence;
                     }
 
-                    let fragment_header = Header::create_fragmented(sequence, channel, group, start_sequence, fragment_count);
+                    let fragment_header = Header::create_fragmented(
+                        sequence,
+                        channel,
+                        group,
+                        start_sequence,
+                        fragment_count,
+                    );
                     fragment_header.write_fragmented(&mut send_buffer.byte_buffer.get_mut());
 
-                    send_buffer.byte_buffer.get_mut()[TACHYON_FRAGMENTED_HEADER_SIZE..chunk_len + TACHYON_FRAGMENTED_HEADER_SIZE].copy_from_slice(chunk);
+                    send_buffer.byte_buffer.get_mut()[TACHYON_FRAGMENTED_HEADER_SIZE
+                        ..chunk_len + TACHYON_FRAGMENTED_HEADER_SIZE]
+                        .copy_from_slice(chunk);
                     fragments.push(sequence);
 
                     index += 1;
@@ -212,15 +228,24 @@ mod tests {
         let data: Vec<u8> = vec![3; 2500];
         let created = frag.create_fragments(&mut sender, 1, &data[..], data.len());
         let send_buffer = sender.get_send_buffer(created[0]).unwrap();
-        let complete = frag.receive_fragment(&send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length);
+        let complete = frag.receive_fragment(
+            &send_buffer.byte_buffer.get(),
+            send_buffer.byte_buffer.length,
+        );
         assert!(!complete.1);
 
         let send_buffer = sender.get_send_buffer(created[1]).unwrap();
-        let complete = frag.receive_fragment(&send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length);
+        let complete = frag.receive_fragment(
+            &send_buffer.byte_buffer.get(),
+            send_buffer.byte_buffer.length,
+        );
         assert!(!complete.1);
 
         let send_buffer = sender.get_send_buffer(created[2]).unwrap();
-        let complete = frag.receive_fragment(&send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length);
+        let complete = frag.receive_fragment(
+            &send_buffer.byte_buffer.get(),
+            send_buffer.byte_buffer.length,
+        );
         assert!(complete.1);
 
         let header = Header::read_fragmented(&send_buffer.byte_buffer.get());

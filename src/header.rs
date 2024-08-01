@@ -62,11 +62,10 @@ pub struct Header {
 
     // nacked - optional
     pub start_sequence: u16,
-    pub flags: u32
+    pub flags: u32,
 }
 
 impl Header {
-   
     pub fn write_unreliable(&self, buffer: &mut [u8]) {
         let mut writer = IntBuffer { index: 0 };
 
@@ -91,7 +90,7 @@ impl Header {
         writer.write_u8(self.channel, buffer);
         writer.write_u16(self.sequence, buffer);
     }
-  
+
     pub fn read(buffer: &[u8]) -> Self {
         let mut header = Header::default();
         let mut reader = IntBuffer { index: 0 };
@@ -131,7 +130,13 @@ impl Header {
         return header;
     }
 
-    pub fn create_fragmented(sequence: u16, channel: u8, group: u16, start: u16, count: u16) -> Self {
+    pub fn create_fragmented(
+        sequence: u16,
+        channel: u8,
+        group: u16,
+        start: u16,
+        count: u16,
+    ) -> Self {
         let mut header = Header::default();
         header.message_type = MESSAGE_TYPE_FRAGMENT;
         header.sequence = sequence;

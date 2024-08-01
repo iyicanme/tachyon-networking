@@ -1,10 +1,14 @@
-
 use std::collections::VecDeque;
 
-use super::{nack::Nack, sequence::*, sequence_buffer::SequenceBuffer, channel::RECEIVE_WINDOW_SIZE_DEFAULT, byte_buffer_pool::{ByteBuffer, ByteBufferPool}};
+use super::{
+    byte_buffer_pool::{ByteBuffer, ByteBufferPool},
+    channel::RECEIVE_WINDOW_SIZE_DEFAULT,
+    nack::Nack,
+    sequence::*,
+    sequence_buffer::SequenceBuffer,
+};
 
 const RECEIVE_BUFFER_SIZE: u16 = 1024;
-
 
 pub struct Receiver {
     pub is_ordered: bool,
@@ -18,7 +22,7 @@ pub struct Receiver {
     pub nack_list: Vec<Nack>,
     pub nack_queue: VecDeque<Nack>,
     pub skipped_sequences: u64,
-    pub buffer_pool: ByteBufferPool
+    pub buffer_pool: ByteBufferPool,
 }
 
 impl Receiver {
@@ -48,7 +52,7 @@ impl Receiver {
             nack_list: Vec::new(),
             skipped_sequences: 0,
             nack_queue: VecDeque::new(),
-            buffer_pool: ByteBufferPool::default()
+            buffer_pool: ByteBufferPool::default(),
         };
 
         return receiver;
@@ -94,7 +98,7 @@ impl Receiver {
     pub fn return_buffer(&mut self, byte_buffer: ByteBuffer) {
         self.buffer_pool.return_buffer(byte_buffer);
     }
-    
+
     pub fn take_published(&mut self) -> Option<ByteBuffer> {
         return self.published.pop_front();
     }
@@ -123,7 +127,11 @@ impl Receiver {
 
     pub fn receive_packet(&mut self, sequence: u16, data: &[u8], length: usize) -> bool {
         // if the difference between current/last is greater then the window, increment current.
-        if Receiver::should_increment_current(self.current_sequence, self.last_sequence, self.receive_window_size) {
+        if Receiver::should_increment_current(
+            self.current_sequence,
+            self.last_sequence,
+            self.receive_window_size,
+        ) {
             self.received.take(self.current_sequence);
             self.current_sequence = Sequence::next_sequence(self.current_sequence);
             self.skipped_sequences += 1;
@@ -232,11 +240,10 @@ impl Receiver {
         if Sequence::is_equal_to_or_less_than(seq, self.current_sequence) {
             return nacked_count;
         }
-     
+
         let count = self.receive_window_size / 32;
 
         for _ in 0..count {
-
             if Sequence::is_equal_to_or_less_than(seq, self.current_sequence) {
                 return nacked_count;
             }
@@ -262,7 +269,7 @@ impl Receiver {
                     self.nack_queue.push_back(current);
                     return nacked_count;
                 }
-    
+
                 if !self.is_received(seq) {
                     current.set_bits(i, true);
                     nacked_count += 1;
@@ -273,17 +280,15 @@ impl Receiver {
             self.nack_queue.push_back(current);
 
             seq = Sequence::previous_sequence(seq);
-            
         }
         return nacked_count;
     }
-
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::tachyon::{receiver::*};
+    use crate::tachyon::receiver::*;
 
     pub fn is_nacked(receiver: &Receiver, sequence: u16) -> bool {
         for nack in &receiver.nack_list {
@@ -295,14 +300,17 @@ mod tests {
     }
 
     fn assert_nack(receiver: &mut Receiver, sequence: u16) {
-        if receiver.is_received(sequence) || sequence >= receiver.last_sequence || sequence <= receiver.current_sequence {
+        if receiver.is_received(sequence)
+            || sequence >= receiver.last_sequence
+            || sequence <= receiver.current_sequence
+        {
             if is_nacked(receiver, sequence) {
                 panic!("{0} is nacked", sequence);
             } else {
                 //println!("{0} not nacked", sequence);
             }
         } else {
-            if !is_nacked(receiver,sequence) {
+            if !is_nacked(receiver, sequence) {
                 panic!("{0} not nacked", sequence);
             } else {
                 //println!("{0} nacked", sequence);
@@ -315,7 +323,6 @@ mod tests {
         let mut channel = Receiver::default(true);
         channel.current_sequence = 0;
         channel.last_sequence = 512;
-        
 
         let nack_count = channel.create_nacks();
         assert_eq!(16, channel.nack_list.len());
@@ -331,7 +338,7 @@ mod tests {
         let mut channel = Receiver::default(true);
         channel.current_sequence = 0;
         channel.last_sequence = 64;
-        
+
         channel.set_received(63);
         channel.set_received(63 - 32);
         channel.set_received(63 - 33);
@@ -342,8 +349,7 @@ mod tests {
         assert_eq!(63 - 4, nacked_count);
 
         for i in 0..66 {
-            assert_nack(&mut channel,i);
-            
+            assert_nack(&mut channel, i);
         }
     }
 
@@ -425,7 +431,6 @@ mod tests {
         assert_eq!(2, channel.current_sequence);
     }
 
-  
     #[test]
     fn full_wrap() {
         let mut channel = Receiver::default(true);
@@ -442,7 +447,7 @@ mod tests {
                 panic!();
             }
             assert!(channel.take_published().is_some());
-            
+
             sequence = Sequence::next_sequence(sequence);
         }
     }
@@ -496,7 +501,6 @@ mod tests {
         assert_eq!(1, channel.published.len());
         assert_eq!(1, channel.current_sequence);
         assert_eq!(5, channel.last_sequence);
-       
 
         let receive_result = channel.receive_packet(3, &data[..], 32);
         assert!(receive_result);
@@ -509,7 +513,6 @@ mod tests {
         let _receive_result = channel.receive_packet(4, &data[..], 32);
         assert_eq!(5, channel.current_sequence);
         assert_eq!(5, channel.last_sequence);
-       
 
         assert_eq!(5, channel.published.len());
 
@@ -534,21 +537,18 @@ mod tests {
         assert_eq!(2, channel.published.len());
         assert_eq!(1, channel.current_sequence);
         assert_eq!(5, channel.last_sequence);
-       
 
         let _receive_result = channel.receive_packet(3, &data[..], 32);
         assert_eq!(1, channel.current_sequence);
-
 
         let _receive_result = channel.receive_packet(2, &data[..], 32);
         assert_eq!(3, channel.current_sequence);
         assert_eq!(4, channel.published.len());
 
-
         let _receive_result = channel.receive_packet(4, &data[..], 32);
         assert_eq!(5, channel.current_sequence);
         assert_eq!(5, channel.last_sequence);
-       
+
         assert_eq!(5, channel.published.len());
 
         assert!(channel.take_published().is_some());

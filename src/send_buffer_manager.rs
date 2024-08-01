@@ -1,6 +1,10 @@
 use std::time::Instant;
 
-use super::{sequence::Sequence, sequence_buffer::SequenceBuffer, byte_buffer_pool::{ByteBuffer, ByteBufferPool, BYTE_BUFFER_SIZE_DEFAULT}};
+use super::{
+    byte_buffer_pool::{ByteBuffer, ByteBufferPool, BYTE_BUFFER_SIZE_DEFAULT},
+    sequence::Sequence,
+    sequence_buffer::SequenceBuffer,
+};
 
 const SEND_BUFFER_SIZE: u16 = 1024;
 const EXPIRE: u128 = 5000;
@@ -13,7 +17,7 @@ pub struct SendBuffer {
 pub struct SendBufferManager {
     pub current_sequence: u16,
     pub buffers: SequenceBuffer<SendBuffer>,
-    pub buffer_pool: ByteBufferPool
+    pub buffer_pool: ByteBufferPool,
 }
 
 impl SendBufferManager {
@@ -29,7 +33,10 @@ impl SendBufferManager {
         let sender = SendBufferManager {
             current_sequence: 0,
             buffers,
-            buffer_pool: ByteBufferPool::create(BYTE_BUFFER_SIZE_DEFAULT,SEND_BUFFER_SIZE as usize)
+            buffer_pool: ByteBufferPool::create(
+                BYTE_BUFFER_SIZE_DEFAULT,
+                SEND_BUFFER_SIZE as usize,
+            ),
         };
         return sender;
     }
@@ -61,11 +68,10 @@ impl SendBufferManager {
     }
 
     pub fn create_send_buffer_old(&mut self, length: usize) -> Option<&mut SendBuffer> {
-
         self.current_sequence = Sequence::next_sequence(self.current_sequence);
 
         let byte_buffer = ByteBuffer::create(length);
-       
+
         let buffer = SendBuffer {
             sequence: self.current_sequence,
             byte_buffer,
@@ -106,14 +112,12 @@ impl SendBufferManager {
             created_at: Instant::now(),
         };
         return self.buffers.insert(self.current_sequence, send_buffer);
-        
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
-
 
     use crate::tachyon::byte_buffer_pool::BYTE_BUFFER_SIZE_DEFAULT;
 
@@ -122,10 +126,14 @@ mod tests {
     #[test]
     fn test_create_buffer() {
         let mut manager = SendBufferManager::default();
-        let buffer = manager.create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT).unwrap();
+        let buffer = manager
+            .create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT)
+            .unwrap();
         assert!(buffer.byte_buffer.pooled);
 
-        let buffer = manager.create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT + 1).unwrap();
+        let buffer = manager
+            .create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT + 1)
+            .unwrap();
         assert!(!buffer.byte_buffer.pooled);
     }
 
@@ -133,13 +141,17 @@ mod tests {
     fn test_reused_buffer() {
         let mut manager = SendBufferManager::default();
         manager.current_sequence = 10;
-        let buffer = manager.create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT).unwrap();
+        let buffer = manager
+            .create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT)
+            .unwrap();
         assert_eq!(11, buffer.sequence);
         assert_eq!(0, buffer.byte_buffer.version);
 
         // should get back same byte buffer with same version and new length
         manager.current_sequence = 10;
-        let buffer = manager.create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT - 1).unwrap();
+        let buffer = manager
+            .create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT - 1)
+            .unwrap();
         assert_eq!(11, buffer.sequence);
         assert_eq!(0, buffer.byte_buffer.version);
         assert!(buffer.byte_buffer.pooled);
@@ -147,7 +159,9 @@ mod tests {
 
         // should get new byte buffer
         manager.current_sequence = 10;
-        let buffer = manager.create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT + 10).unwrap();
+        let buffer = manager
+            .create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT + 10)
+            .unwrap();
         assert_eq!(11, buffer.sequence);
         assert_eq!(0, buffer.byte_buffer.version);
         assert!(!buffer.byte_buffer.pooled);

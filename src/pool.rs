@@ -1,42 +1,41 @@
-use std::{
-    collections::VecDeque,
-    sync::{Arc}
-};
+use std::{collections::VecDeque, sync::Arc};
 
 use crossbeam::queue::ArrayQueue;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use rustc_hash::FxHashMap;
 use synchronoise::CountdownEvent;
 
-use super::{network_address::NetworkAddress, Tachyon, TachyonConfig, int_buffer::LengthPrefixed, connection::Connection, TachyonSendResult};
-
+use super::{
+    connection::Connection, int_buffer::LengthPrefixed, network_address::NetworkAddress, Tachyon,
+    TachyonConfig, TachyonSendResult,
+};
 
 #[derive(Clone, Copy)]
 #[repr(C)]
 #[derive(Default)]
 pub struct SendTarget {
     pub identity_id: u32,
-    pub address: NetworkAddress
+    pub address: NetworkAddress,
 }
 
 #[derive(Default, Clone, Copy)]
 #[repr(C)]
 pub struct PoolServerRef {
     pub address: NetworkAddress,
-    pub id: u16
+    pub id: u16,
 }
 
 #[derive(Default, Clone, Copy)]
 #[repr(C)]
 pub struct OutBufferCounts {
     pub bytes_written: u32,
-    pub count: u32
+    pub count: u32,
 }
 
 pub struct OutBuffer {
     pub data: Vec<u8>,
     pub bytes_written: u32,
-    pub count: u32
+    pub count: u32,
 }
 
 pub struct Pool {
@@ -51,29 +50,29 @@ pub struct Pool {
     pub servers_in_use: Arc<ArrayQueue<Tachyon>>,
     pub counter: Option<Arc<CountdownEvent>>,
     pub connections_by_identity: FxHashMap<u32, Connection>,
-    pub connections_by_address: FxHashMap<NetworkAddress, Connection>
-    
+    pub connections_by_address: FxHashMap<NetworkAddress, Connection>,
 }
 
 impl Pool {
     pub fn create(max_servers: u8, receive_buffer_len: u32, out_buffer_len: u32) -> Self {
-
         let receive_buffers: ArrayQueue<Vec<u8>> = ArrayQueue::new(max_servers as usize);
         let out_buffers: ArrayQueue<OutBuffer> = ArrayQueue::new(max_servers as usize);
         let queue: ArrayQueue<VecDeque<Vec<u8>>> = ArrayQueue::new(max_servers as usize);
 
         for _ in 0..max_servers {
             queue.push(VecDeque::new()).unwrap_or(());
-            receive_buffers.push(vec![0; receive_buffer_len as usize]).unwrap_or(());
+            receive_buffers
+                .push(vec![0; receive_buffer_len as usize])
+                .unwrap_or(());
 
             let buffer = OutBuffer {
                 data: vec![0; out_buffer_len as usize],
                 bytes_written: 0,
-                count: 0
+                count: 0,
             };
             out_buffers.push(buffer).unwrap_or(());
         }
-        
+
         let in_use: ArrayQueue<Tachyon> = ArrayQueue::new(max_servers as usize);
 
         let pool = Pool {
@@ -88,13 +87,17 @@ impl Pool {
             servers_in_use: Arc::new(in_use),
             counter: None,
             connections_by_identity: FxHashMap::default(),
-            connections_by_address: FxHashMap::default()
+            connections_by_address: FxHashMap::default(),
         };
         return pool;
     }
 
-    pub fn create_server(&mut self, config: TachyonConfig, address: NetworkAddress, id: u16) -> bool {
-
+    pub fn create_server(
+        &mut self,
+        config: TachyonConfig,
+        address: NetworkAddress,
+        id: u16,
+    ) -> bool {
         if self.servers.len() > self.max_servers.into() {
             return false;
         }
@@ -160,43 +163,64 @@ impl Pool {
     pub fn get_available_server(&self) -> Option<PoolServerRef> {
         let mut best: Option<PoolServerRef> = None;
         let mut low = 10000;
-        for (_id,server) in &self.servers {
+        for (_id, server) in &self.servers {
             let conn_count = server.connections.len();
             if conn_count < low && server.socket.socket.is_some() {
-               low = conn_count;
-               best = Some(PoolServerRef {address: server.socket.address, id: server.id});
+                low = conn_count;
+                best = Some(PoolServerRef {
+                    address: server.socket.address,
+                    id: server.id,
+                });
             }
         }
 
         return best;
     }
-    
+
     pub fn get_server(&mut self, id: u16) -> Option<&mut Tachyon> {
         return self.servers.get_mut(&id);
     }
 
-    pub fn send_to_target(&mut self,channel_id: u8, target: SendTarget, data: &mut [u8], length: i32) -> TachyonSendResult {
+    pub fn send_to_target(
+        &mut self,
+        channel_id: u8,
+        target: SendTarget,
+        data: &mut [u8],
+        length: i32,
+    ) -> TachyonSendResult {
         if target.identity_id > 0 {
-            return self.send_to_identity(channel_id,target.identity_id, data, length);
+            return self.send_to_identity(channel_id, target.identity_id, data, length);
         } else {
-            return self.send_to_address(channel_id,target.address, data, length);
+            return self.send_to_address(channel_id, target.address, data, length);
         }
     }
 
-    fn send_to_identity(&mut self, channel_id: u8, id: u32, data: &mut [u8], length: i32) -> TachyonSendResult {
+    fn send_to_identity(
+        &mut self,
+        channel_id: u8,
+        id: u32,
+        data: &mut [u8],
+        length: i32,
+    ) -> TachyonSendResult {
         if let Some(conn) = self.connections_by_identity.get(&id) {
             if let Some(server) = self.servers.get_mut(&conn.tachyon_id) {
                 if channel_id == 0 {
                     return server.send_unreliable(conn.address, data, length as usize);
                 } else {
-                    return server.send_reliable(channel_id,conn.address, data, length as usize);
+                    return server.send_reliable(channel_id, conn.address, data, length as usize);
                 }
             }
         }
         return TachyonSendResult::default();
     }
 
-    fn send_to_address(&mut self,channel_id: u8, address: NetworkAddress, data: &mut [u8], length: i32) -> TachyonSendResult {
+    fn send_to_address(
+        &mut self,
+        channel_id: u8,
+        address: NetworkAddress,
+        data: &mut [u8],
+        length: i32,
+    ) -> TachyonSendResult {
         if let Some(conn) = self.connections_by_address.get(&address) {
             if let Some(sender) = self.servers.get_mut(&conn.tachyon_id) {
                 if channel_id == 0 {
@@ -227,7 +251,11 @@ impl Pool {
         return count;
     }
 
-    fn receive_server(server: &mut Tachyon, receive_queue: &mut VecDeque<Vec<u8>>, receive_buffer: &mut Vec<u8>) {
+    fn receive_server(
+        server: &mut Tachyon,
+        receive_queue: &mut VecDeque<Vec<u8>>,
+        receive_buffer: &mut Vec<u8>,
+    ) {
         for _ in 0..100000 {
             let res = server.receive_loop(receive_buffer);
             if res.length == 0 || res.error > 0 {
@@ -236,7 +264,6 @@ impl Pool {
                 let mut message: Vec<u8> = vec![0; res.length as usize];
                 message.copy_from_slice(&receive_buffer[0..res.length as usize]);
                 receive_queue.push_back(message);
-
             }
         }
     }
@@ -267,8 +294,14 @@ impl Pool {
                     Some(mut server) => {
                         if let Some(mut receive_queue) = receive_queue_clone.pop() {
                             if let Some(mut receive_buffer) = receive_buffers_clone.pop() {
-                                Pool::receive_server(&mut server, &mut receive_queue, &mut receive_buffer);
-                                receive_buffers_clone.push(receive_buffer).unwrap_or_default();
+                                Pool::receive_server(
+                                    &mut server,
+                                    &mut receive_queue,
+                                    &mut receive_buffer,
+                                );
+                                receive_buffers_clone
+                                    .push(receive_buffer)
+                                    .unwrap_or_default();
                             }
                             receive_queue_clone.push(receive_queue).unwrap_or_default();
                         }
@@ -314,14 +347,15 @@ impl Pool {
             if let Some(mut receive_queue) = receive_queue_clone.pop() {
                 if let Some(mut receive_buffer) = receive_buffers_clone.pop() {
                     Pool::receive_server(server, &mut receive_queue, &mut receive_buffer);
-                    receive_buffers_clone.push(receive_buffer).unwrap_or_default();
+                    receive_buffers_clone
+                        .push(receive_buffer)
+                        .unwrap_or_default();
                 }
                 receive_queue_clone.push(receive_queue).unwrap_or_default();
             }
         });
         self.move_received_to_published();
     }
-
 
     // blocking receive with more complex api.  messages are copied to a single out buffer with length and ip address prefixed.
     pub fn receive_blocking_out_buffer(&mut self) {
@@ -334,15 +368,25 @@ impl Pool {
                 out_buffer.count = 0;
 
                 if let Some(mut receive_buffer) = receive_buffers_clone.pop() {
-                    Pool::receive_server_into_out_buffer(server, &mut out_buffer, &mut receive_buffer);
-                    receive_buffers_clone.push(receive_buffer).unwrap_or_default();
+                    Pool::receive_server_into_out_buffer(
+                        server,
+                        &mut out_buffer,
+                        &mut receive_buffer,
+                    );
+                    receive_buffers_clone
+                        .push(receive_buffer)
+                        .unwrap_or_default();
                 }
                 out_buffers_clone.push(out_buffer).unwrap_or_default();
             }
         });
     }
 
-    fn receive_server_into_out_buffer(server: &mut Tachyon, out_buffer: &mut OutBuffer, receive_buffer: &mut Vec<u8>) {
+    fn receive_server_into_out_buffer(
+        server: &mut Tachyon,
+        out_buffer: &mut OutBuffer,
+        receive_buffer: &mut Vec<u8>,
+    ) {
         let mut writer = LengthPrefixed::default();
         for _ in 0..100000 {
             let res = server.receive_loop(receive_buffer);
@@ -350,7 +394,12 @@ impl Pool {
                 out_buffer.bytes_written = writer.writer.index as u32;
                 break;
             } else {
-                writer.write(res.channel,res.address,&receive_buffer[0..res.length as usize], &mut out_buffer.data);
+                writer.write(
+                    res.channel,
+                    res.address,
+                    &receive_buffer[0..res.length as usize],
+                    &mut out_buffer.data,
+                );
                 out_buffer.count += 1;
             }
         }
@@ -366,7 +415,8 @@ impl Pool {
                     continue;
                 }
 
-                receive_buffer[0..out_buffer.bytes_written as usize].copy_from_slice(&out_buffer.data[0..out_buffer.bytes_written as usize]);
+                receive_buffer[0..out_buffer.bytes_written as usize]
+                    .copy_from_slice(&out_buffer.data[0..out_buffer.bytes_written as usize]);
 
                 result.count = out_buffer.count;
                 result.bytes_written = out_buffer.bytes_written;
@@ -381,7 +431,6 @@ impl Pool {
         }
         return result;
     }
-
 }
 
 #[cfg(test)]
@@ -389,13 +438,12 @@ mod tests {
     use serial_test::serial;
 
     use crate::tachyon::{
+        int_buffer::{IntBuffer, LengthPrefixed},
         network_address::NetworkAddress,
-        tachyon_test::{TachyonTestClient},
-        TachyonConfig, int_buffer::{IntBuffer, LengthPrefixed}
+        tachyon_test::TachyonTestClient,
+        TachyonConfig,
     };
-    use std::{
-        time::Instant,
-    };
+    use std::time::Instant;
 
     use super::Pool;
 
@@ -404,9 +452,9 @@ mod tests {
     fn test_blocking_receive() {
         let mut pool = Pool::create(40, 1024 * 1024, 1024 * 1024 * 4);
         let config = TachyonConfig::default();
-        pool.create_server(config, NetworkAddress::localhost(8001),1);
-        pool.create_server(config, NetworkAddress::localhost(8002),2);
-        pool.create_server(config, NetworkAddress::localhost(8003),3);
+        pool.create_server(config, NetworkAddress::localhost(8001), 1);
+        pool.create_server(config, NetworkAddress::localhost(8002), 2);
+        pool.create_server(config, NetworkAddress::localhost(8003), 3);
 
         let mut id = 4;
         for i in 0..20 {
@@ -426,15 +474,15 @@ mod tests {
         let msg_value = 234873;
 
         for _ in 0..count {
-            let mut writer = IntBuffer {index: 0};
+            let mut writer = IntBuffer { index: 0 };
             writer.write_u32(msg_value, &mut client1.send_buffer);
             client1.client_send_reliable(1, msg_len);
 
-            let mut writer = IntBuffer {index: 0};
+            let mut writer = IntBuffer { index: 0 };
             writer.write_u32(msg_value, &mut client2.send_buffer);
             client2.client_send_reliable(1, msg_len);
 
-            let mut writer = IntBuffer {index: 0};
+            let mut writer = IntBuffer { index: 0 };
             writer.write_u32(msg_value, &mut client3.send_buffer);
             client3.client_send_reliable(1, msg_len);
         }
@@ -446,11 +494,9 @@ mod tests {
         println!("Elapsed: {:.2?}", elapsed);
 
         // should have 3 out buffers to read
-        let mut receive_buffer: Vec<u8> = vec![0;1024 * 1024 * 4];
+        let mut receive_buffer: Vec<u8> = vec![0; 1024 * 1024 * 4];
         let res = pool.get_next_out_buffer(&mut receive_buffer);
         println!("bytes_written:{0} count:{1}", res.bytes_written, res.count);
-
-        
 
         // length + channel + address + body
         let bytes_written = count * msg_len + count * 4 + count * 14;
@@ -459,14 +505,14 @@ mod tests {
 
         let mut reader = LengthPrefixed::default();
         for _ in 0..res.count {
-            let (_channel,_address,range) = reader.read(&receive_buffer);
+            let (_channel, _address, range) = reader.read(&receive_buffer);
             let len = range.end - range.start;
             //println!("len:{0} address:{1}", len, address);
 
             assert_eq!(msg_len, len as usize);
             let slice = &receive_buffer[range];
 
-            let mut value_reader = IntBuffer {index: 0};
+            let mut value_reader = IntBuffer { index: 0 };
             let value = value_reader.read_u32(slice);
             assert_eq!(msg_value, value);
         }
@@ -474,7 +520,7 @@ mod tests {
         let res = pool.get_next_out_buffer(&mut receive_buffer);
         assert_eq!(res.bytes_written, bytes_written as u32);
         assert_eq!(count, res.count as usize);
-        
+
         let res = pool.get_next_out_buffer(&mut receive_buffer);
         assert_eq!(res.bytes_written, bytes_written as u32);
         assert_eq!(count, res.count as usize);
@@ -486,7 +532,6 @@ mod tests {
         // servers and arrays returned
         assert_eq!(pool.max_servers as usize, pool.out_buffers.len());
         assert_eq!(23, pool.servers.len());
-
     }
 
     #[test]
@@ -494,9 +539,9 @@ mod tests {
     fn test_receive() {
         let mut pool = Pool::create(4, 1024 * 1024, 1024 * 1024 * 4);
         let config = TachyonConfig::default();
-        pool.create_server(config, NetworkAddress::localhost(8001),1);
-        pool.create_server(config, NetworkAddress::localhost(8002),2);
-        pool.create_server(config, NetworkAddress::localhost(8003),3);
+        pool.create_server(config, NetworkAddress::localhost(8001), 1);
+        pool.create_server(config, NetworkAddress::localhost(8002), 2);
+        pool.create_server(config, NetworkAddress::localhost(8003), 3);
 
         let mut client1 = TachyonTestClient::create(NetworkAddress::localhost(8001));
         let mut client2 = TachyonTestClient::create(NetworkAddress::localhost(8002));
@@ -509,15 +554,15 @@ mod tests {
         let msg_len = 64;
         let msg_value = 234873;
         for _ in 0..count {
-            let mut writer = IntBuffer {index: 0};
+            let mut writer = IntBuffer { index: 0 };
             writer.write_u32(msg_value, &mut client1.send_buffer);
             client1.client_send_reliable(1, msg_len);
 
-            let mut writer = IntBuffer {index: 0};
+            let mut writer = IntBuffer { index: 0 };
             writer.write_u32(msg_value, &mut client2.send_buffer);
             client2.client_send_reliable(1, msg_len);
 
-            let mut writer = IntBuffer {index: 0};
+            let mut writer = IntBuffer { index: 0 };
             writer.write_u32(msg_value, &mut client3.send_buffer);
             client3.client_send_reliable(1, msg_len);
         }
@@ -542,8 +587,5 @@ mod tests {
 
         let elapsed = now.elapsed();
         println!("Elapsed: {:.2?}", elapsed);
-
     }
-
-    
 }

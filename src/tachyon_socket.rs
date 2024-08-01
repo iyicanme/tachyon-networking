@@ -7,9 +7,7 @@ use rand::{prelude::StdRng, Rng, SeedableRng};
 use socket2::{Domain, Socket, Type};
 
 use super::{
-    header::{MESSAGE_TYPE_RELIABLE},
-    int_buffer::IntBuffer,
-    network_address::NetworkAddress
+    header::MESSAGE_TYPE_RELIABLE, int_buffer::IntBuffer, network_address::NetworkAddress,
 };
 
 pub enum CreateConnectResult {
@@ -30,7 +28,7 @@ pub struct TachyonSocket {
     pub address: NetworkAddress,
     pub is_server: bool,
     pub socket: Option<UdpSocket>,
-    pub rng: StdRng
+    pub rng: StdRng,
 }
 
 impl TachyonSocket {
@@ -39,7 +37,7 @@ impl TachyonSocket {
             address: NetworkAddress::default(),
             is_server: false,
             socket: None,
-            rng: SeedableRng::seed_from_u64(32634)
+            rng: SeedableRng::seed_from_u64(32634),
         };
         return socket;
     }
@@ -130,7 +128,12 @@ impl TachyonSocket {
         return false;
     }
 
-    pub fn receive(&mut self, data: &mut [u8], drop_chance: u64, drop_reliable_only: bool) -> SocketReceiveResult {
+    pub fn receive(
+        &mut self,
+        data: &mut [u8],
+        drop_chance: u64,
+        drop_reliable_only: bool,
+    ) -> SocketReceiveResult {
         let socket = match &self.socket {
             Some(v) => v,
             None => {

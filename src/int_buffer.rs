@@ -7,7 +7,6 @@ pub struct IntBuffer {
 }
 
 impl IntBuffer {
-
     pub fn write_address(&mut self, address: NetworkAddress, data: &mut [u8]) {
         self.write_u16(address.a, data);
         self.write_u16(address.b, data);
@@ -74,42 +73,41 @@ impl IntBuffer {
         return v1 | v2 << 4;
     }
 
-    pub fn u8_to_u4(byte: u8) -> (u8,u8) {
-        return (byte & 0x0F,  byte >> 4);
+    pub fn u8_to_u4(byte: u8) -> (u8, u8) {
+        return (byte & 0x0F, byte >> 4);
     }
 }
 
 pub struct LengthPrefixed {
     pub reader: IntBuffer,
-    pub writer: IntBuffer
+    pub writer: IntBuffer,
 }
 
 impl LengthPrefixed {
     pub fn default() -> Self {
         return LengthPrefixed {
-            reader: IntBuffer {index: 0},
-            writer: IntBuffer {index: 0}
-        }
+            reader: IntBuffer { index: 0 },
+            writer: IntBuffer { index: 0 },
+        };
     }
 
     pub fn write(&mut self, channel: u16, src_address: NetworkAddress, src: &[u8], dst: &mut [u8]) {
         self.writer.write_u32(src.len() as u32, dst);
         self.writer.write_u16(channel, dst);
         self.writer.write_address(src_address, dst);
-        dst[self.writer.index..self.writer.index+src.len()].copy_from_slice(&src);
+        dst[self.writer.index..self.writer.index + src.len()].copy_from_slice(&src);
         self.writer.index += src.len();
     }
 
-    pub fn read(&mut self, data: &[u8]) -> (u16,NetworkAddress,Range<usize>) {
+    pub fn read(&mut self, data: &[u8]) -> (u16, NetworkAddress, Range<usize>) {
         let len = self.reader.read_u32(&data) as usize;
         let channel = self.reader.read_u16(&data);
         let address = self.reader.read_address(&data);
-        let range = self.reader.index..self.reader.index+len;
+        let range = self.reader.index..self.reader.index + len;
         self.reader.index += len;
-        return (channel, address,range);
+        return (channel, address, range);
     }
 }
-
 
 #[cfg(test)]
 mod tests {

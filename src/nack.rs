@@ -11,7 +11,7 @@ pub struct Nack {
     pub start_sequence: u16,
     pub flags: u32,
     pub nacked_count: u32,
-    pub sent_count: u32
+    pub sent_count: u32,
 }
 
 impl Nack {
@@ -31,24 +31,20 @@ impl Nack {
     }
 
     pub fn read_single(sequences: &mut Vec<u16>, data: &[u8], position: usize) {
-        let mut buffer = IntBuffer {
-            index: position
-        };
+        let mut buffer = IntBuffer { index: position };
 
         let mut nack = Nack::default();
         nack.start_sequence = buffer.read_u16(data);
         if nack.start_sequence == 0 {
             return;
         }
-        
+
         nack.flags = buffer.read_u32(data);
         nack.get_nacked(sequences);
     }
 
     pub fn write_single(nack: &Nack, data: &mut [u8], position: usize) -> usize {
-        let mut buffer = IntBuffer {
-            index: position
-        };
+        let mut buffer = IntBuffer { index: position };
 
         buffer.write_u16(nack.start_sequence, data);
         buffer.write_u32(nack.flags, data);
@@ -95,7 +91,6 @@ impl Nack {
             nack.get_nacked(sequences);
         }
     }
-
 
     pub fn get_nacked(&self, sequences: &mut Vec<u16>) {
         sequences.push(self.start_sequence);

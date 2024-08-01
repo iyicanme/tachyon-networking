@@ -1,18 +1,19 @@
-
-use rustc_hash::{FxHashMap};
+use rustc_hash::FxHashMap;
 
 use super::{
     fragmentation::Fragmentation,
     header::{
-        Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_NONE, MESSAGE_TYPE_NACK,
-        TACHYON_FRAGMENTED_HEADER_SIZE, TACHYON_HEADER_SIZE, MESSAGE_TYPE_RELIABLE_WITH_NACK, MESSAGE_TYPE_RELIABLE, TACHYON_NACKED_HEADER_SIZE
+        Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_NACK, MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE,
+        MESSAGE_TYPE_RELIABLE_WITH_NACK, TACHYON_FRAGMENTED_HEADER_SIZE, TACHYON_HEADER_SIZE,
+        TACHYON_NACKED_HEADER_SIZE,
     },
     int_buffer::IntBuffer,
     nack::Nack,
     network_address::NetworkAddress,
     receiver::Receiver,
     send_buffer_manager::SendBufferManager,
-    tachyon_socket::TachyonSocket, SEND_ERROR_UNKNOWN, TachyonSendResult
+    tachyon_socket::TachyonSocket,
+    TachyonSendResult, SEND_ERROR_UNKNOWN,
 };
 
 pub static mut NONE_SEND_DATA: &'static mut [u8] = &mut [0; TACHYON_HEADER_SIZE];
@@ -96,16 +97,15 @@ nones_sent:{} nones_received:{} nones_accepted:{} skipped_sequences:{}\n\n",
 pub struct ChannelConfig {
     pub receive_window_size: u32,
     pub nack_redundancy: u32,
-    pub ordered: u32
+    pub ordered: u32,
 }
 
 impl ChannelConfig {
-
     pub fn default_ordered() -> Self {
         let config = ChannelConfig {
             ordered: 1,
             receive_window_size: RECEIVE_WINDOW_SIZE_DEFAULT,
-            nack_redundancy: NACK_REDUNDANCY_DEFAULT
+            nack_redundancy: NACK_REDUNDANCY_DEFAULT,
         };
         return config;
     }
@@ -114,7 +114,7 @@ impl ChannelConfig {
         let config = ChannelConfig {
             ordered: 0,
             receive_window_size: RECEIVE_WINDOW_SIZE_DEFAULT,
-            nack_redundancy: NACK_REDUNDANCY_DEFAULT
+            nack_redundancy: NACK_REDUNDANCY_DEFAULT,
         };
         return config;
     }
@@ -135,7 +135,7 @@ pub struct Channel {
     nacked_sequences: Vec<u16>,
     nacked_sequence_map: FxHashMap<u16, NetworkAddress>,
     pub resend_rewrite_buffer: Vec<u8>,
-    pub nack_redundancy: u32
+    pub nack_redundancy: u32,
 }
 
 impl Channel {
@@ -150,8 +150,8 @@ impl Channel {
             nack_send_data: vec![0; 512],
             nacked_sequences: Vec::new(),
             nacked_sequence_map: FxHashMap::default(),
-            resend_rewrite_buffer: vec![0;2048],
-            nack_redundancy: config.nack_redundancy
+            resend_rewrite_buffer: vec![0; 2048],
+            nack_redundancy: config.nack_redundancy,
         };
         return channel;
     }
@@ -183,11 +183,14 @@ impl Channel {
             }
         }
 
-        return (0,self.address);
+        return (0, self.address);
     }
 
     // returns message length, address, should retry (queue not empty)
-    fn receive_published_internal(&mut self, receive_buffer: &mut [u8]) -> (u32, NetworkAddress, bool) {
+    fn receive_published_internal(
+        &mut self,
+        receive_buffer: &mut [u8],
+    ) -> (u32, NetworkAddress, bool) {
         match self.receiver.take_published() {
             Some(byte_buffer) => {
                 let buffer_len = byte_buffer.length;
@@ -217,7 +220,7 @@ impl Channel {
                         }
                     }
                 }
-                
+
                 let header_size: usize;
                 if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
                     header_size = TACHYON_NACKED_HEADER_SIZE;
@@ -228,7 +231,8 @@ impl Channel {
                     return (0, self.address, true);
                 }
 
-                receive_buffer[0..buffer_len - header_size].copy_from_slice(&byte_buffer.get()[header_size..buffer_len]);
+                receive_buffer[0..buffer_len - header_size]
+                    .copy_from_slice(&byte_buffer.get()[header_size..buffer_len]);
                 self.receiver.return_buffer(byte_buffer);
 
                 self.stats.published_consumed += 1;
@@ -238,21 +242,36 @@ impl Channel {
                 return (0, self.address, false);
             }
         }
-        
     }
 
-    pub fn process_none_message(&mut self, sequence: u16, receive_buffer: &mut [u8], received_len: usize) {
+    pub fn process_none_message(
+        &mut self,
+        sequence: u16,
+        receive_buffer: &mut [u8],
+        received_len: usize,
+    ) {
         self.stats.nones_received += 1;
-        if self.receiver.receive_packet(sequence, receive_buffer, received_len)
+        if self
+            .receiver
+            .receive_packet(sequence, receive_buffer, received_len)
         {
             self.stats.nones_accepted += 1;
         }
     }
 
-    pub fn process_fragment_message(&mut self, sequence: u16, receive_buffer: &mut [u8], received_len: usize) {
+    pub fn process_fragment_message(
+        &mut self,
+        sequence: u16,
+        receive_buffer: &mut [u8],
+        received_len: usize,
+    ) {
         let received_frag_res = self.frag.receive_fragment(receive_buffer, received_len);
         if received_frag_res.0 {
-            if self.receiver.receive_packet(sequence,receive_buffer,TACHYON_FRAGMENTED_HEADER_SIZE) {
+            if self.receiver.receive_packet(
+                sequence,
+                receive_buffer,
+                TACHYON_FRAGMENTED_HEADER_SIZE,
+            ) {
                 self.stats.fragments_received += 1;
             }
         }
@@ -261,28 +280,41 @@ impl Channel {
     // separate nack message, varint encoded
     pub fn process_nack_message(&mut self, address: NetworkAddress, receive_buffer: &mut [u8]) {
         self.nacked_sequences.clear();
-        Nack::read_varint(&mut self.nacked_sequences, &receive_buffer[..],TACHYON_HEADER_SIZE);
+        Nack::read_varint(
+            &mut self.nacked_sequences,
+            &receive_buffer[..],
+            TACHYON_HEADER_SIZE,
+        );
         self.copy_nacked_to_map(address);
     }
 
     // nack that is in a reliable message
     pub fn process_single_nack(&mut self, address: NetworkAddress, receive_buffer: &mut [u8]) {
         self.nacked_sequences.clear();
-        Nack::read_single(&mut self.nacked_sequences, &receive_buffer[..],TACHYON_HEADER_SIZE);
+        Nack::read_single(
+            &mut self.nacked_sequences,
+            &receive_buffer[..],
+            TACHYON_HEADER_SIZE,
+        );
         self.copy_nacked_to_map(address);
     }
 
-
-    pub fn send_reliable(&mut self, address: NetworkAddress, data: &mut [u8], body_len: usize, socket: &TachyonSocket) -> TachyonSendResult {
+    pub fn send_reliable(
+        &mut self,
+        address: NetworkAddress,
+        data: &mut [u8],
+        body_len: usize,
+        socket: &TachyonSocket,
+    ) -> TachyonSendResult {
         let mut result = TachyonSendResult::default();
 
         // Optionally include nacks in outgoing messages, up to nack_redundancy times for each nack
         let mut nack_option: Option<Nack> = None;
         let mut header_len = TACHYON_HEADER_SIZE;
-       
+
         if self.nack_redundancy > 0 {
             if let Some(mut nack) = self.receiver.nack_queue.pop_front() {
-                if nack.sent_count < self.nack_redundancy  {
+                if nack.sent_count < self.nack_redundancy {
                     nack.sent_count += 1;
                     nack_option = Some(nack);
                     header_len = TACHYON_NACKED_HEADER_SIZE;
@@ -296,7 +328,8 @@ impl Channel {
         match self.send_buffers.create_send_buffer(send_buffer_len) {
             Some(send_buffer) => {
                 let sequence = send_buffer.sequence;
-                send_buffer.byte_buffer.get_mut()[header_len..body_len + header_len].copy_from_slice(&data[0..body_len]);
+                send_buffer.byte_buffer.get_mut()[header_len..body_len + header_len]
+                    .copy_from_slice(&data[0..body_len]);
 
                 let mut header = Header::default();
                 header.channel = self.id;
@@ -311,10 +344,11 @@ impl Channel {
                 } else {
                     header.message_type = MESSAGE_TYPE_RELIABLE;
                 }
-                
+
                 header.write(&mut send_buffer.byte_buffer.get_mut());
 
-                let sent_len = socket.send_to(address, &send_buffer.byte_buffer.get(), send_buffer_len);
+                let sent_len =
+                    socket.send_to(address, &send_buffer.byte_buffer.get(), send_buffer_len);
                 result.sent_len = sent_len as u32;
                 result.header = header;
 
@@ -330,7 +364,7 @@ impl Channel {
         }
     }
 
-    pub fn update(&mut self,socket: &TachyonSocket) {
+    pub fn update(&mut self, socket: &TachyonSocket) {
         self.send_nacks(socket);
         self.resend_nacked(socket);
 
@@ -346,11 +380,9 @@ impl Channel {
         }
     }
 
-
     // Resend messages for nacks sent to us. We accumulate these into a hashmap of unique sequence/address pairs
     // and then do the resends all at once when update() is run.
     fn resend_nacked(&mut self, socket: &TachyonSocket) {
-
         if self.nacked_sequence_map.len() == 0 {
             return;
         }
@@ -359,25 +391,32 @@ impl Channel {
             self.stats.nacks_received += 1;
             match self.send_buffers.get_send_buffer(*sequence) {
                 Some(send_buffer) => {
-
                     let mut reader = IntBuffer { index: 0 };
 
                     let message_type = reader.read_u8(&send_buffer.byte_buffer.get());
 
                     // rewrite to MESSAGE_TYPE_RELIABLE.
                     if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
-                        let send_len = Channel::rewrite_reliable_nack_to_reliable(&mut self.resend_rewrite_buffer,&send_buffer.byte_buffer.get());
-                        
+                        let send_len = Channel::rewrite_reliable_nack_to_reliable(
+                            &mut self.resend_rewrite_buffer,
+                            &send_buffer.byte_buffer.get(),
+                        );
+
                         socket.send_to(*address, &self.resend_rewrite_buffer, send_len);
                     } else {
-                        socket.send_to(*address, &send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length);
+                        socket.send_to(
+                            *address,
+                            &send_buffer.byte_buffer.get(),
+                            send_buffer.byte_buffer.length,
+                        );
                     }
-                    
+
                     self.stats.resent += 1;
                 }
                 None => {
                     Channel::create_none(*sequence, self.id);
-                    let _sent_len = socket.send_to(*address,unsafe { &NONE_SEND_DATA },TACHYON_HEADER_SIZE);
+                    let _sent_len =
+                        socket.send_to(*address, unsafe { &NONE_SEND_DATA }, TACHYON_HEADER_SIZE);
                     self.stats.nones_sent += 1;
                 }
             }
@@ -387,7 +426,6 @@ impl Channel {
 
     // Send nacks for sequences we are missing
     fn send_nacks(&mut self, socket: &TachyonSocket) {
-        
         let nack_count = self.receiver.create_nacks();
         if self.receiver.nack_list.len() == 0 {
             return;
@@ -398,13 +436,20 @@ impl Channel {
         header.channel = self.id;
         header.write(&mut self.nack_send_data);
 
-        let position = Nack::write_varint(&self.receiver.nack_list, &mut self.nack_send_data, TACHYON_HEADER_SIZE as u64);
+        let position = Nack::write_varint(
+            &self.receiver.nack_list,
+            &mut self.nack_send_data,
+            TACHYON_HEADER_SIZE as u64,
+        );
         socket.send_to(self.address, &self.nack_send_data, position as usize);
 
         self.stats.nacks_sent += nack_count as u64;
     }
 
-    pub fn rewrite_reliable_nack_to_reliable(rewrite_buffer: &mut [u8], send_buffer: &[u8]) -> usize {
+    pub fn rewrite_reliable_nack_to_reliable(
+        rewrite_buffer: &mut [u8],
+        send_buffer: &[u8],
+    ) -> usize {
         let mut header = Header::read(send_buffer);
         let src_body = TACHYON_NACKED_HEADER_SIZE..send_buffer.len();
         let src_body_len = src_body.len();
@@ -418,20 +463,25 @@ impl Channel {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
 
-    use crate::tachyon::{header::{Header, MESSAGE_TYPE_RELIABLE_WITH_NACK,  MESSAGE_TYPE_RELIABLE}, network_address::NetworkAddress, channel::ChannelConfig};
+    use crate::tachyon::{
+        channel::ChannelConfig,
+        header::{Header, MESSAGE_TYPE_RELIABLE, MESSAGE_TYPE_RELIABLE_WITH_NACK},
+        network_address::NetworkAddress,
+    };
 
     use super::Channel;
 
-
     #[test]
     fn test_rewrite_nack_to_reliable() {
-
-        let mut channel = Channel::create(1, NetworkAddress::default(), ChannelConfig::default_ordered());
-        let mut send_buffer: Vec<u8> = vec![0;1200];
+        let mut channel = Channel::create(
+            1,
+            NetworkAddress::default(),
+            ChannelConfig::default_ordered(),
+        );
+        let mut send_buffer: Vec<u8> = vec![0; 1200];
         let mut header = Header::default();
         header.message_type = MESSAGE_TYPE_RELIABLE_WITH_NACK;
         header.channel = 13;
@@ -441,7 +491,10 @@ mod tests {
         header.write(&mut send_buffer);
         send_buffer[10] = 3;
         send_buffer[1199] = 7;
-        let send_len = Channel::rewrite_reliable_nack_to_reliable(&mut channel.resend_rewrite_buffer,&send_buffer);
+        let send_len = Channel::rewrite_reliable_nack_to_reliable(
+            &mut channel.resend_rewrite_buffer,
+            &send_buffer,
+        );
         assert_eq!(1200 - 6, send_len);
         assert_eq!(3, channel.resend_rewrite_buffer[4]);
         assert_eq!(7, channel.resend_rewrite_buffer[1199 - 6]);
@@ -453,8 +506,5 @@ mod tests {
 
         assert_eq!(0, header.start_sequence);
         assert_eq!(0, header.flags);
-       
     }
-
 }
-

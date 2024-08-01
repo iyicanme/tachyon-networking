@@ -1,12 +1,13 @@
-
 use crate::tachyon::*;
 
 use super::pool::SendTarget;
 
-
 #[no_mangle]
-pub extern "C" fn register_callbacks(tachyon_ptr: *mut Tachyon, identity_event_callback: Option<IdentityEventCallback>,
-     connection_event_callback: Option<ConnectionEventCallback>) {
+pub extern "C" fn register_callbacks(
+    tachyon_ptr: *mut Tachyon,
+    identity_event_callback: Option<IdentityEventCallback>,
+    connection_event_callback: Option<ConnectionEventCallback>,
+) {
     let tachyon = unsafe { &mut *tachyon_ptr };
 
     if identity_event_callback.is_some() {
@@ -57,7 +58,11 @@ pub extern "C" fn connect_socket(
 }
 
 #[no_mangle]
-pub extern "C" fn configure_channel(tachyon_ptr: *mut Tachyon, channel_id: u8, config_ptr: *const ChannelConfig) -> i32 {
+pub extern "C" fn configure_channel(
+    tachyon_ptr: *mut Tachyon,
+    channel_id: u8,
+    config_ptr: *const ChannelConfig,
+) -> i32 {
     let tachyon = unsafe { &mut *tachyon_ptr };
     let channel_config = unsafe { &*config_ptr };
     let res = tachyon.configure_channel(channel_id, *channel_config);
@@ -77,7 +82,14 @@ pub fn copy_send_result(from: TachyonSendResult, to: *mut TachyonSendResult) {
 }
 
 #[no_mangle]
-pub extern "C" fn send_to_target(tachyon_ptr: *mut Tachyon, channel: u8, target_ptr: *const SendTarget, data: *mut u8, length: i32, ret: *mut TachyonSendResult) {
+pub extern "C" fn send_to_target(
+    tachyon_ptr: *mut Tachyon,
+    channel: u8,
+    target_ptr: *const SendTarget,
+    data: *mut u8,
+    length: i32,
+    ret: *mut TachyonSendResult,
+) {
     let tachyon = unsafe { &mut *tachyon_ptr };
     let target: SendTarget = unsafe { std::ptr::read(target_ptr as *const _) };
     let slice = unsafe { std::slice::from_raw_parts_mut(data, length as usize) };
@@ -87,7 +99,12 @@ pub extern "C" fn send_to_target(tachyon_ptr: *mut Tachyon, channel: u8, target_
 }
 
 #[no_mangle]
-pub extern "C" fn receive(tachyon_ptr: *mut Tachyon, data: *mut u8, receive_buffer_len: u32, ret: *mut TachyonReceiveResult) {
+pub extern "C" fn receive(
+    tachyon_ptr: *mut Tachyon,
+    data: *mut u8,
+    receive_buffer_len: u32,
+    ret: *mut TachyonReceiveResult,
+) {
     let tachyon = unsafe { &mut *tachyon_ptr };
     let slice = unsafe { std::slice::from_raw_parts_mut(data, receive_buffer_len as usize) };
     let result = tachyon.receive_loop(slice);
@@ -107,7 +124,11 @@ pub extern "C" fn tachyon_update(tachyon_ptr: *mut Tachyon) {
 }
 
 #[no_mangle]
-pub extern "C" fn tachyon_get_connection(tachyon_ptr: *mut Tachyon, naddress: *const NetworkAddress, connection: *mut Connection) {
+pub extern "C" fn tachyon_get_connection(
+    tachyon_ptr: *mut Tachyon,
+    naddress: *const NetworkAddress,
+    connection: *mut Connection,
+) {
     let tachyon = unsafe { &mut *tachyon_ptr };
     let address: NetworkAddress = unsafe { std::ptr::read(naddress as *const _) };
     if let Some(conn) = tachyon.get_connection(address) {
@@ -118,7 +139,11 @@ pub extern "C" fn tachyon_get_connection(tachyon_ptr: *mut Tachyon, naddress: *c
 }
 
 #[no_mangle]
-pub extern "C" fn tachyon_get_connection_by_identity(tachyon_ptr: *mut Tachyon, id: u32, connection: *mut Connection) {
+pub extern "C" fn tachyon_get_connection_by_identity(
+    tachyon_ptr: *mut Tachyon,
+    id: u32,
+    connection: *mut Connection,
+) {
     let tachyon = unsafe { &mut *tachyon_ptr };
     if let Some(conn) = tachyon.get_connection_by_identity(id) {
         unsafe {
@@ -128,7 +153,11 @@ pub extern "C" fn tachyon_get_connection_by_identity(tachyon_ptr: *mut Tachyon, 
 }
 
 #[no_mangle]
-pub extern "C" fn tachyon_get_config(tachyon_ptr: *mut Tachyon, config: *mut TachyonConfig, identity: *mut Identity) {
+pub extern "C" fn tachyon_get_config(
+    tachyon_ptr: *mut Tachyon,
+    config: *mut TachyonConfig,
+    identity: *mut Identity,
+) {
     let tachyon = unsafe { &mut *tachyon_ptr };
     unsafe {
         (*config) = tachyon.config;
@@ -159,7 +188,6 @@ pub extern "C" fn get_stats(tachyon_ptr: *mut Tachyon, stats: *mut TachyonStats)
     }
 }
 
-
 #[no_mangle]
 pub extern "C" fn create_unreliable_sender(tachyon_ptr: *mut Tachyon) -> *mut UnreliableSender {
     let tachyon = unsafe { &mut *tachyon_ptr };
@@ -178,11 +206,16 @@ pub extern "C" fn destroy_unreliable_sender(sender_ptr: *mut UnreliableSender) {
 }
 
 #[no_mangle]
-pub extern "C" fn unreliable_sender_send(sender_ptr: *mut UnreliableSender, naddress: *const NetworkAddress, data_ptr: *mut u8, length: i32, ret: *mut TachyonSendResult) {
+pub extern "C" fn unreliable_sender_send(
+    sender_ptr: *mut UnreliableSender,
+    naddress: *const NetworkAddress,
+    data_ptr: *mut u8,
+    length: i32,
+    ret: *mut TachyonSendResult,
+) {
     let sender = unsafe { &mut *sender_ptr };
     let address: NetworkAddress = unsafe { std::ptr::read(naddress as *const _) };
     let data = unsafe { std::slice::from_raw_parts_mut(data_ptr, length as usize) };
     let result = sender.send(address, data, length as usize);
     copy_send_result(result, ret);
 }
-

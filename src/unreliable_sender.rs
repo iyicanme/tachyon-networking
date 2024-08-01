@@ -11,21 +11,25 @@ const UNRELIABLE_BUFFER_LEN: usize = 1024 * 16;
 // this is created with a cloned UdpSocket which can then be used from another thread.
 pub struct UnreliableSender {
     pub socket: Option<UdpSocket>,
-    pub send_buffer: Vec<u8>
+    pub send_buffer: Vec<u8>,
 }
 
 impl UnreliableSender {
-
     pub fn create(socket: Option<UdpSocket>) -> Self {
         UnreliableSender {
             socket,
-            send_buffer: vec![0;UNRELIABLE_BUFFER_LEN]
+            send_buffer: vec![0; UNRELIABLE_BUFFER_LEN],
         }
     }
 
-    pub fn send(&mut self, address: NetworkAddress, data: &mut [u8], body_len: usize) -> TachyonSendResult {
+    pub fn send(
+        &mut self,
+        address: NetworkAddress,
+        data: &mut [u8],
+        body_len: usize,
+    ) -> TachyonSendResult {
         let mut result = TachyonSendResult::default();
-        
+
         if body_len < 1 {
             result.error = SEND_ERROR_LENGTH;
             return result;
@@ -37,7 +41,7 @@ impl UnreliableSender {
         }
 
         // copy to send buffer at +1 offset for message_type
-        self.send_buffer[1..body_len+1].copy_from_slice(&data[0..body_len]);
+        self.send_buffer[1..body_len + 1].copy_from_slice(&data[0..body_len]);
         let length = body_len + 1;
 
         let mut header = Header::default();
