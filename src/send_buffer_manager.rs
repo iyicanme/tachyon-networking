@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::byte_buffer_pool::{ByteBuffer, ByteBufferPool, BYTE_BUFFER_SIZE_DEFAULT};
+use crate::byte_buffer_pool::{BYTE_BUFFER_SIZE_DEFAULT, ByteBuffer, ByteBufferPool};
 use crate::sequence::Sequence;
 use crate::sequence_buffer::SequenceBuffer;
 
@@ -19,24 +19,25 @@ pub struct SendBufferManager {
 }
 
 impl SendBufferManager {
-    pub fn default() -> Self {
+    #[must_use]
+    pub fn create() -> Self {
         let mut buffers: SequenceBuffer<SendBuffer> = SequenceBuffer {
             values: Vec::new(),
             partition_by: SEND_BUFFER_SIZE,
         };
+        
         for _ in 0..SEND_BUFFER_SIZE {
             buffers.values.push(None);
         }
 
-        let sender = SendBufferManager {
+        Self {
             current_sequence: 0,
             buffers,
             buffer_pool: ByteBufferPool::create(
                 BYTE_BUFFER_SIZE_DEFAULT,
                 SEND_BUFFER_SIZE as usize,
             ),
-        };
-        return sender;
+        }
     }
 
     pub fn get_send_buffer(&mut self, sequence: u16) -> Option<&mut SendBuffer> {
@@ -122,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_create_buffer() {
-        let mut manager = SendBufferManager::default();
+        let mut manager = SendBufferManager::create();
         let buffer = manager
             .create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT)
             .unwrap();
@@ -136,7 +137,7 @@ mod tests {
 
     #[test]
     fn test_reused_buffer() {
-        let mut manager = SendBufferManager::default();
+        let mut manager = SendBufferManager::create();
         manager.current_sequence = 10;
         let buffer = manager
             .create_send_buffer(BYTE_BUFFER_SIZE_DEFAULT)
@@ -167,7 +168,7 @@ mod tests {
 
     #[test]
     fn test_expire() {
-        let mut buffers = SendBufferManager::default();
+        let mut buffers = SendBufferManager::create();
         let buffer = buffers.create_send_buffer(32);
         let buffer = buffer.unwrap();
         let sequence = buffer.sequence;

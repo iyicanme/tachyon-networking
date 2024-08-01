@@ -142,7 +142,7 @@ impl Channel {
             id,
             address,
             frag: Fragmentation::default(),
-            send_buffers: SendBufferManager::default(),
+            send_buffers: SendBufferManager::create(),
             receiver: Receiver::create(config.is_ordered(), config.receive_window_size),
             stats: ChannelStats::default(),
             nack_send_data: vec![0; 512],

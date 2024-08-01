@@ -200,7 +200,7 @@ mod tests {
     #[test]
     fn test_create() {
         let mut frag = Fragmentation::default();
-        let mut sender = SendBufferManager::default();
+        let mut sender = SendBufferManager::create();
 
         let data: Vec<u8> = vec![0; 1400];
         assert_eq!(1400, data.len());
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn test_receive() {
         let mut frag = Fragmentation::default();
-        let mut sender = SendBufferManager::default();
+        let mut sender = SendBufferManager::create();
 
         let data: Vec<u8> = vec![3; 2500];
         let created = frag.create_fragments(&mut sender, 1, &data[..], data.len());
