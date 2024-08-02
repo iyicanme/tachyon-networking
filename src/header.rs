@@ -17,8 +17,7 @@ pub const TACHYON_HEADER_SIZE: usize = 4;
 pub const TACHYON_NACKED_HEADER_SIZE: usize = 10;
 pub const TACHYON_FRAGMENTED_HEADER_SIZE: usize = 10;
 
-#[derive(Clone, Copy)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct Header {
     pub message_type: u8,
     pub channel: u8,

@@ -6,10 +6,11 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use synchronoise::CountdownEvent;
 
-use crate::{Tachyon, TachyonConfig, TachyonSendResult};
+use crate::{Tachyon, TachyonConfig, TachyonSendError, TachyonSendSuccess};
 use crate::connection::Connection;
 use crate::int_buffer::LengthPrefixed;
 use crate::network_address::NetworkAddress;
+use crate::tachyon_receive_result::{TachyonReceiveSuccess, TachyonReceiveType};
 
 #[derive(Clone, Copy, Default)]
 pub struct SendTarget {
@@ -176,7 +177,7 @@ impl Pool {
         target: SendTarget,
         data: &mut [u8],
         length: i32,
-    ) -> TachyonSendResult {
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         if target.identity_id > 0 {
             self.send_to_identity(channel_id, target.identity_id, data, length)
         } else {
@@ -190,13 +191,13 @@ impl Pool {
         id: u32,
         data: &mut [u8],
         length: i32,
-    ) -> TachyonSendResult {
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         let Some(conn) = self.connections_by_identity.get(&id) else {
-            return TachyonSendResult::default();
+            return Ok(TachyonSendSuccess::default());
         };
 
         let Some(server) = self.servers.get_mut(&conn.tachyon_id) else {
-            return TachyonSendResult::default();
+            return Ok(TachyonSendSuccess::default());
         };
 
         if channel_id == 0 {
@@ -206,19 +207,13 @@ impl Pool {
         }
     }
 
-    fn send_to_address(
-        &mut self,
-        channel_id: u8,
-        address: NetworkAddress,
-        data: &mut [u8],
-        length: i32,
-    ) -> TachyonSendResult {
+    fn send_to_address(&mut self, channel_id: u8, address: NetworkAddress, data: &mut [u8], length: i32) -> Result<TachyonSendSuccess, TachyonSendError> {
         let Some(conn) = self.connections_by_address.get(&address) else {
-            return TachyonSendResult::default();
+            return Ok(TachyonSendSuccess::default());
         };
 
         let Some(sender) = self.servers.get_mut(&conn.tachyon_id)else {
-            return TachyonSendResult::default();
+            return Ok(TachyonSendSuccess::default());
         };
 
         if channel_id == 0 {
@@ -252,10 +247,10 @@ impl Pool {
         receive_buffer: &mut [u8],
     ) {
         for _ in 0..100_000 {
-            let res = server.receive_loop(receive_buffer);
-            if res.length == 0 || res.error > 0 {
-                break;
-            }
+            let res = match server.receive_loop(receive_buffer) {
+                Ok(TachyonReceiveSuccess { length: 0, receive_type: _, address: _ }) | Err(_) => { break; }
+                Ok(r) => r,
+            };
 
             let mut message: Vec<u8> = vec![0; res.length as usize];
             message.copy_from_slice(&receive_buffer[0..res.length as usize]);
@@ -305,7 +300,7 @@ impl Pool {
             });
         }
         self.counter = Some(counter);
-        
+
         true
     }
 
@@ -383,13 +378,16 @@ impl Pool {
     ) {
         let mut writer = LengthPrefixed::default();
         for _ in 0..100_000 {
-            let res = server.receive_loop(receive_buffer);
-            if res.length == 0 || res.error > 0 {
-                out_buffer.bytes_written = writer.writer.index as u32;
-                break;
-            }
+            let (length, channel, address) = match server.receive_loop(receive_buffer) {
+                Ok(TachyonReceiveSuccess { length: 0, receive_type: _, address: _ }) | Err(_) => {
+                    out_buffer.bytes_written = writer.writer.index as u32;
+                    break;
+                }
+                Ok(TachyonReceiveSuccess { length, receive_type: TachyonReceiveType::Reliable { channel }, address }) => (length, channel, address),
+                Ok(TachyonReceiveSuccess { length, receive_type: TachyonReceiveType::Unreliable, address }) => (length, 0, address),
+            };
 
-            writer.write(res.channel, res.address, &receive_buffer[0..res.length as usize], &mut out_buffer.data);
+            writer.write(channel, address, &receive_buffer[0..length as usize], &mut out_buffer.data);
 
             out_buffer.count += 1;
         }

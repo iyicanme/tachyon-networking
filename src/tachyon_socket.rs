@@ -8,21 +8,17 @@ use crate::header::MESSAGE_TYPE_RELIABLE;
 use crate::int_buffer::IntBuffer;
 use crate::network_address::NetworkAddress;
 
-#[derive(Eq, PartialEq)]
-pub enum CreateConnectResult {
-    Success,
-    Error,
+pub struct SocketReceiveSuccess {
+    pub bytes_received: usize,
+    pub network_address: NetworkAddress,
 }
 
-pub enum SocketReceiveResult {
-    Success {
-        bytes_received: usize,
-        network_address: NetworkAddress,
-    },
+pub enum SocketReceiveError {
     Empty,
     Error,
     Dropped,
 }
+
 pub struct TachyonSocket {
     pub address: NetworkAddress,
     pub is_server: bool,
@@ -46,9 +42,9 @@ impl TachyonSocket {
         self.socket.as_ref()?.try_clone().ok()
     }
 
-    pub fn bind_socket(&mut self, naddress: NetworkAddress) -> CreateConnectResult {
+    pub fn bind_socket(&mut self, naddress: NetworkAddress) -> Result<(), ()> {
         if self.socket.is_some() {
-            return CreateConnectResult::Error;
+            return Err(());
         }
 
         let address = naddress.to_socket_addr();
@@ -57,7 +53,7 @@ impl TachyonSocket {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
 
         let Ok(()) = socket.bind(&address.into()) else {
-            return CreateConnectResult::Error;
+            return Err(());
         };
 
         socket.set_recv_buffer_size(8192 * 256).unwrap();
@@ -65,12 +61,12 @@ impl TachyonSocket {
         self.socket = Some(socket.into());
         self.is_server = true;
 
-        CreateConnectResult::Success
+        Ok(())
     }
 
-    pub fn connect_socket(&mut self, naddress: NetworkAddress) -> CreateConnectResult {
+    pub fn connect_socket(&mut self, naddress: NetworkAddress) -> Result<(), ()> {
         if self.socket.is_some() {
-            return CreateConnectResult::Error;
+            return Err(());
         }
 
         self.address = NetworkAddress::default();
@@ -78,7 +74,7 @@ impl TachyonSocket {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, None).unwrap();
 
         let Ok(()) = socket.bind(&sock_addr.into()) else {
-            return CreateConnectResult::Error;
+            return Err(());
         };
 
         socket.set_recv_buffer_size(8192 * 256).unwrap();
@@ -88,12 +84,12 @@ impl TachyonSocket {
         let udp_socket: UdpSocket = socket.into();
 
         let Ok(()) = udp_socket.connect(address) else {
-            return CreateConnectResult::Error;
+            return Err(());
         };
 
         self.socket = Some(udp_socket);
 
-        CreateConnectResult::Success
+        Ok(())
     }
 
     fn should_drop(&mut self, data: &[u8], drop_chance: u64, drop_reliable_only: bool) -> bool {
@@ -116,13 +112,13 @@ impl TachyonSocket {
         data: &mut [u8],
         drop_chance: u64,
         drop_reliable_only: bool,
-    ) -> SocketReceiveResult {
+    ) -> Result<SocketReceiveSuccess, SocketReceiveError> {
         if self.should_drop(data, drop_chance, drop_reliable_only) {
-            return SocketReceiveResult::Dropped;
+            return Err(SocketReceiveError::Dropped);
         }
 
         let Some(socket) = &self.socket else {
-            return SocketReceiveResult::Error;
+            return Err(SocketReceiveError::Error);
         };
 
         if self.is_server {
@@ -132,33 +128,26 @@ impl TachyonSocket {
         }
     }
 
-    fn recv_server(socket: &UdpSocket, data: &mut [u8]) -> SocketReceiveResult {
+    fn recv_server(socket: &UdpSocket, data: &mut [u8]) -> Result<SocketReceiveSuccess, SocketReceiveError> {
         match socket.recv_from(data) {
             Ok((bytes_received, src_addr)) => {
                 let address = NetworkAddress::from_socket_addr(src_addr);
-                SocketReceiveResult::Success {
-                    bytes_received,
-                    network_address: address,
-                }
+                Ok(SocketReceiveSuccess { bytes_received, network_address: address })
             }
             Err(_) => {
-                SocketReceiveResult::Empty
+                Err(SocketReceiveError::Empty)
             }
         }
     }
 
-    fn recv_client(socket: &UdpSocket, data: &mut [u8]) -> SocketReceiveResult {
-        socket.recv(data).map_or(
-            SocketReceiveResult::Empty,
-            |size| SocketReceiveResult::Success { bytes_received: size, network_address: NetworkAddress::default() },
-        )
+    fn recv_client(socket: &UdpSocket, data: &mut [u8]) -> Result<SocketReceiveSuccess, SocketReceiveError> {
+        socket.recv(data)
+            .map(|size| SocketReceiveSuccess { bytes_received: size, network_address: NetworkAddress::default() })
+            .map_err(|_| SocketReceiveError::Empty)
     }
 
-    #[must_use]
-    pub fn send_to(&self, address: NetworkAddress, data: &[u8], length: usize) -> usize {
-        let Some(socket) = &self.socket else {
-            return 0;
-        };
+    pub fn send_to(&self, address: NetworkAddress, data: &[u8], length: usize) -> Result<usize, ()> {
+        let socket = self.socket.as_ref().ok_or(())?;
 
         let slice = &data[0..length];
         let socket_result = if address.port == 0 {
@@ -167,6 +156,6 @@ impl TachyonSocket {
             socket.send_to(slice, address.to_socket_addr())
         };
 
-        socket_result.unwrap_or_default()
+        socket_result.map_err(|_| ())
     }
 }

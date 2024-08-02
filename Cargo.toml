@@ -31,5 +31,8 @@ rayon = "1.10"
 crossbeam = "0.8"
 synchronoise = "1.0"
 
+[dev-dependencies]
+claims = "0.7"
+
 [profile.test]
 opt-level = 3

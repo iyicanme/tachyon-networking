@@ -1,6 +1,6 @@
 use rustc_hash::FxHashMap;
 
-use crate::{SEND_ERROR_UNKNOWN, TachyonSendResult};
+use crate::{TachyonSendError, TachyonSendSuccess};
 use crate::fragmentation::Fragmentation;
 use crate::header::{
     Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_NACK, MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE,
@@ -173,11 +173,13 @@ impl Channel {
 
     pub fn receive_published(&mut self, receive_buffer: &mut [u8]) -> (u32, NetworkAddress) {
         for _ in 0..1000 {
-            let res = self.receive_published_internal(receive_buffer);
-            if res.0 > 0 {
-                return (res.0, res.1);
+            let (length, address, should_retry) = self.receive_published_internal(receive_buffer);
+            
+            if length > 0 {
+                return (length, address);
             }
-            if !res.2 {
+            
+            if !should_retry {
                 break;
             }
         }
@@ -292,9 +294,7 @@ impl Channel {
         data: &[u8],
         body_len: usize,
         socket: &TachyonSocket,
-    ) -> TachyonSendResult {
-        let mut result = TachyonSendResult::default();
-
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         // Optionally include nacks in outgoing messages, up to nack_redundancy times for each nack
         let mut nack_option: Option<Nack> = None;
         let mut header_len = TACHYON_HEADER_SIZE;
@@ -313,8 +313,7 @@ impl Channel {
         let send_buffer_len = body_len + header_len;
 
         let Some(send_buffer) = self.send_buffers.create_send_buffer(send_buffer_len) else {
-            result.error = SEND_ERROR_UNKNOWN;
-            return result;
+            return Err(TachyonSendError::Unknown);
         };
 
         let sequence = send_buffer.sequence;
@@ -338,15 +337,11 @@ impl Channel {
 
         header.write(send_buffer.byte_buffer.get_mut());
 
-        let sent_len =
-            socket.send_to(address, send_buffer.byte_buffer.get(), send_buffer_len);
-        result.sent_len = sent_len as u32;
-        result.header = header;
-
+        let sent_len = socket.send_to(address, send_buffer.byte_buffer.get(), send_buffer_len).unwrap_or_default();
         self.stats.bytes_sent += sent_len as u64;
         self.stats.sent += 1;
 
-        result
+        Ok(TachyonSendSuccess { sent_len: sent_len as u32, header })
     }
 
     pub fn update(&mut self, socket: &TachyonSocket) {

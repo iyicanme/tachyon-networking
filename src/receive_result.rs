@@ -1,19 +1,22 @@
 use crate::network_address::NetworkAddress;
 
-pub const RECEIVE_ERROR_UNKNOWN: u32 = 1;
-pub const RECEIVE_ERROR_CHANNEL: u32 = 2;
+pub struct ReceiveSuccess {
+    pub network_address: NetworkAddress,
+    pub receive_type: ReceiveType,
+}
 
-pub enum ReceiveResult {
+pub enum ReceiveType {
     Reliable {
-        network_address: NetworkAddress,
         channel_id: u8,
     },
+    Unreliable {
+        received_len: usize,
+    },
+}
+
+pub enum ReceiveError {
     Error,
     Empty,
     Retry,
     ChannelError,
-    UnReliable {
-        received_len: usize,
-        network_address: NetworkAddress,
-    },
 }

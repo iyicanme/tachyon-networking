@@ -1,6 +1,6 @@
 use std::net::UdpSocket;
 
-use crate::{SEND_ERROR_CHANNEL, SEND_ERROR_LENGTH, TachyonSendResult};
+use crate::{TachyonSendError, TachyonSendSuccess};
 use crate::header::{Header, MESSAGE_TYPE_UNRELIABLE};
 use crate::network_address::NetworkAddress;
 
@@ -21,18 +21,13 @@ impl UnreliableSender {
         }
     }
 
-    pub fn send(
-        &mut self,
-        address: NetworkAddress,
-        data: &[u8],
-        body_len: usize,
-    ) -> TachyonSendResult {
+    pub fn send(&mut self, address: NetworkAddress, data: &[u8], body_len: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
         if body_len < 1 {
-            return TachyonSendResult { error: SEND_ERROR_LENGTH, ..TachyonSendResult::default() };
+            return Err(TachyonSendError::Length);
         }
 
         if self.socket.is_none() {
-            return TachyonSendResult { error: SEND_ERROR_CHANNEL, ..TachyonSendResult::default() };
+            return Err(TachyonSendError::Channel);
         }
 
         // copy to send buffer at +1 offset for message_type
@@ -47,11 +42,7 @@ impl UnreliableSender {
         header.write_unreliable(&mut self.send_buffer);
         let sent_len = self.send_to(address, length);
 
-        TachyonSendResult {
-            sent_len: sent_len as u32,
-            header,
-            ..TachyonSendResult::default()
-        }
+        Ok(TachyonSendSuccess { sent_len: sent_len as u32, header })
     }
 
     fn send_to(&self, address: NetworkAddress, length: usize) -> usize {
