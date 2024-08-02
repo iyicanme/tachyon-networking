@@ -78,7 +78,11 @@ impl Receiver {
         }
     }
     #[must_use]
-    pub const fn should_increment_current(current: u16, last: u16, receive_window_size: u32) -> bool {
+    pub const fn should_increment_current(
+        current: u16,
+        last: u16,
+        receive_window_size: u32,
+    ) -> bool {
         if current == last {
             return false;
         }
@@ -297,7 +301,10 @@ mod tests {
     }
 
     fn assert_nack(receiver: &Receiver, sequence: u16) {
-        if receiver.is_received(sequence) || sequence >= receiver.last_sequence || sequence <= receiver.current_sequence {
+        if receiver.is_received(sequence)
+            || sequence >= receiver.last_sequence
+            || sequence <= receiver.current_sequence
+        {
             assert!(!is_nacked(receiver, sequence), "{sequence} is nacked");
         } else {
             assert!(is_nacked(receiver, sequence), "{sequence} not nacked");
@@ -425,7 +432,11 @@ mod tests {
         let mut sequence = 1;
         for _ in 1..200_000 {
             let _receive_result = channel.receive_packet(sequence, &data[..], 32);
-            assert_eq!(channel.current_sequence, sequence, "{0} {1} {2}", sequence, channel.current_sequence, channel.last_sequence);
+            assert_eq!(
+                channel.current_sequence, sequence,
+                "{0} {1} {2}",
+                sequence, channel.current_sequence, channel.last_sequence
+            );
             assert!(channel.take_published().is_some());
 
             sequence = Sequence::next_sequence(sequence);

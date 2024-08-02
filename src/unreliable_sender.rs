@@ -1,8 +1,8 @@
 use std::net::UdpSocket;
 
-use crate::{TachyonSendError, TachyonSendSuccess};
 use crate::header::{Header, MESSAGE_TYPE_UNRELIABLE};
 use crate::network_address::NetworkAddress;
+use crate::{TachyonSendError, TachyonSendSuccess};
 
 const UNRELIABLE_BUFFER_LEN: usize = 1024 * 16;
 
@@ -21,7 +21,12 @@ impl UnreliableSender {
         }
     }
 
-    pub fn send(&mut self, address: NetworkAddress, data: &[u8], body_len: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
+    pub fn send(
+        &mut self,
+        address: NetworkAddress,
+        data: &[u8],
+        body_len: usize,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         if body_len < 1 {
             return Err(TachyonSendError::Length);
         }
@@ -42,7 +47,10 @@ impl UnreliableSender {
         header.write_unreliable(&mut self.send_buffer);
         let sent_len = self.send_to(address, length);
 
-        Ok(TachyonSendSuccess { sent_len: sent_len as u32, header })
+        Ok(TachyonSendSuccess {
+            sent_len: sent_len as u32,
+            header,
+        })
     }
 
     fn send_to(&self, address: NetworkAddress, length: usize) -> usize {

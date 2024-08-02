@@ -6,11 +6,11 @@ use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use synchronoise::CountdownEvent;
 
-use crate::{Tachyon, TachyonConfig, TachyonSendError, TachyonSendSuccess};
 use crate::connection::Connection;
 use crate::int_buffer::LengthPrefixed;
 use crate::network_address::NetworkAddress;
 use crate::tachyon_receive_result::{TachyonReceiveSuccess, TachyonReceiveType};
+use crate::{Tachyon, TachyonConfig, TachyonSendError, TachyonSendSuccess};
 
 #[derive(Clone, Copy, Default)]
 pub struct SendTarget {
@@ -141,12 +141,18 @@ impl Pool {
 
     #[must_use]
     pub fn get_server_having_connection(&self, address: NetworkAddress) -> u16 {
-        self.connections_by_address.get(&address).map(|c| c.tachyon_id).unwrap_or_default()
+        self.connections_by_address
+            .get(&address)
+            .map(|c| c.tachyon_id)
+            .unwrap_or_default()
     }
 
     #[must_use]
     pub fn get_server_having_identity(&self, identity_id: u32) -> u16 {
-        self.connections_by_identity.get(&identity_id).map(|c| c.tachyon_id).unwrap_or_default()
+        self.connections_by_identity
+            .get(&identity_id)
+            .map(|c| c.tachyon_id)
+            .unwrap_or_default()
     }
 
     #[must_use]
@@ -207,12 +213,18 @@ impl Pool {
         }
     }
 
-    fn send_to_address(&mut self, channel_id: u8, address: NetworkAddress, data: &mut [u8], length: i32) -> Result<TachyonSendSuccess, TachyonSendError> {
+    fn send_to_address(
+        &mut self,
+        channel_id: u8,
+        address: NetworkAddress,
+        data: &mut [u8],
+        length: i32,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         let Some(conn) = self.connections_by_address.get(&address) else {
             return Ok(TachyonSendSuccess::default());
         };
 
-        let Some(sender) = self.servers.get_mut(&conn.tachyon_id)else {
+        let Some(sender) = self.servers.get_mut(&conn.tachyon_id) else {
             return Ok(TachyonSendSuccess::default());
         };
 
@@ -248,7 +260,14 @@ impl Pool {
     ) {
         for _ in 0..100_000 {
             let res = match server.receive_loop(receive_buffer) {
-                Ok(TachyonReceiveSuccess { length: 0, receive_type: _, address: _ }) | Err(_) => { break; }
+                Ok(TachyonReceiveSuccess {
+                    length: 0,
+                    receive_type: _,
+                    address: _,
+                })
+                | Err(_) => {
+                    break;
+                }
                 Ok(r) => r,
             };
 
@@ -379,15 +398,33 @@ impl Pool {
         let mut writer = LengthPrefixed::default();
         for _ in 0..100_000 {
             let (length, channel, address) = match server.receive_loop(receive_buffer) {
-                Ok(TachyonReceiveSuccess { length: 0, receive_type: _, address: _ }) | Err(_) => {
+                Ok(TachyonReceiveSuccess {
+                    length: 0,
+                    receive_type: _,
+                    address: _,
+                })
+                | Err(_) => {
                     out_buffer.bytes_written = writer.writer.index as u32;
                     break;
                 }
-                Ok(TachyonReceiveSuccess { length, receive_type: TachyonReceiveType::Reliable { channel }, address }) => (length, channel, address),
-                Ok(TachyonReceiveSuccess { length, receive_type: TachyonReceiveType::Unreliable, address }) => (length, 0, address),
+                Ok(TachyonReceiveSuccess {
+                    length,
+                    receive_type: TachyonReceiveType::Reliable { channel },
+                    address,
+                }) => (length, channel, address),
+                Ok(TachyonReceiveSuccess {
+                    length,
+                    receive_type: TachyonReceiveType::Unreliable,
+                    address,
+                }) => (length, 0, address),
             };
 
-            writer.write(channel, address, &receive_buffer[0..length as usize], &mut out_buffer.data);
+            writer.write(
+                channel,
+                address,
+                &receive_buffer[0..length as usize],
+                &mut out_buffer.data,
+            );
 
             out_buffer.count += 1;
         }
@@ -489,8 +526,8 @@ mod tests {
         // TODO: Next two asserts works on Windows but not on Linux
         #[cfg(target_os = "windows")]
         {
-        assert_eq!(res.bytes_written, bytes_written as u32);
-        assert_eq!(count, res.count as usize);
+            assert_eq!(res.bytes_written, bytes_written as u32);
+            assert_eq!(count, res.count as usize);
         }
 
         let mut reader = LengthPrefixed::default();
@@ -508,14 +545,14 @@ mod tests {
         }
 
         let res = pool.get_next_out_buffer(&mut receive_buffer);
-        
+
         // TODO: Next two asserts works on Windows but not on Linux
         #[cfg(target_os = "windows")]
         {
             assert_eq!(res.bytes_written, bytes_written as u32);
             assert_eq!(count, res.count as usize);
         }
-        
+
         let res = pool.get_next_out_buffer(&mut receive_buffer);
         // TODO: Next two asserts works on Windows but not on Linux
         #[cfg(target_os = "windows")]
@@ -523,16 +560,16 @@ mod tests {
             assert_eq!(res.bytes_written, bytes_written as u32);
             assert_eq!(count, res.count as usize);
         }
-        
+
         let res = pool.get_next_out_buffer(&mut receive_buffer);
-        
+
         // TODO: Next two asserts works on Windows but not on Linux
         #[cfg(target_os = "windows")]
         {
             assert_eq!(res.bytes_written, 0);
             assert_eq!(0, res.count as usize);
         }
-        
+
         // servers and arrays returned
         assert_eq!(pool.max_servers as usize, pool.out_buffers.len());
         assert_eq!(23, pool.servers.len());

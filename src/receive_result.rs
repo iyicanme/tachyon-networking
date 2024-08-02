@@ -6,12 +6,8 @@ pub struct ReceiveSuccess {
 }
 
 pub enum ReceiveType {
-    Reliable {
-        channel_id: u8,
-    },
-    Unreliable {
-        received_len: usize,
-    },
+    Reliable { channel_id: u8 },
+    Unreliable { received_len: usize },
 }
 
 pub enum ReceiveError {

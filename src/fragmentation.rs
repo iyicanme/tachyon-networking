@@ -38,13 +38,14 @@ impl Fragmentation {
         self.next_group += 1;
         if self.next_group >= u16::MAX - 1 {
             self.next_group = 1;
-
         }
         self.next_group
     }
 
     fn get_group_length(map: &FxHashMap<u16, Vec<u8>>) -> usize {
-        map.values().fold(0, |length, buffer| length + buffer.len() - TACHYON_FRAGMENTED_HEADER_SIZE)
+        map.values().fold(0, |length, buffer| {
+            length + buffer.len() - TACHYON_FRAGMENTED_HEADER_SIZE
+        })
     }
 
     pub fn assemble(&mut self, header: Header) -> Result<Vec<u8>, ()> {
@@ -84,7 +85,8 @@ impl Fragmentation {
         let header = Header::read_fragmented(data);
         if let Entry::Vacant(e) = self.received.entry(header.fragment_group) {
             e.insert(FxHashMap::default());
-            self.received_at.insert(header.fragment_group, Instant::now());
+            self.received_at
+                .insert(header.fragment_group, Instant::now());
         }
 
         if let Some(map) = self.received.get_mut(&header.fragment_group) {
@@ -134,17 +136,12 @@ impl Fragmentation {
                 start_sequence_filled = true;
             }
 
-            let fragment_header = Header::create_fragmented(
-                sequence,
-                channel,
-                group,
-                start_sequence,
-                fragment_count,
-            );
+            let fragment_header =
+                Header::create_fragmented(sequence, channel, group, start_sequence, fragment_count);
 
             fragment_header.write_fragmented(send_buffer.byte_buffer.get_mut());
-            send_buffer.byte_buffer.get_mut()[TACHYON_FRAGMENTED_HEADER_SIZE
-                ..chunk_len + TACHYON_FRAGMENTED_HEADER_SIZE]
+            send_buffer.byte_buffer.get_mut()
+                [TACHYON_FRAGMENTED_HEADER_SIZE..chunk_len + TACHYON_FRAGMENTED_HEADER_SIZE]
                 .copy_from_slice(chunk);
 
             fragments.push(sequence);

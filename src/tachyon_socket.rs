@@ -1,7 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
 
-use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use socket2::{Domain, Socket, Type};
 
 use crate::header::MESSAGE_TYPE_RELIABLE;
@@ -128,25 +128,41 @@ impl TachyonSocket {
         }
     }
 
-    fn recv_server(socket: &UdpSocket, data: &mut [u8]) -> Result<SocketReceiveSuccess, SocketReceiveError> {
+    fn recv_server(
+        socket: &UdpSocket,
+        data: &mut [u8],
+    ) -> Result<SocketReceiveSuccess, SocketReceiveError> {
         match socket.recv_from(data) {
             Ok((bytes_received, src_addr)) => {
                 let address = NetworkAddress::from_socket_addr(src_addr);
-                Ok(SocketReceiveSuccess { bytes_received, network_address: address })
+                Ok(SocketReceiveSuccess {
+                    bytes_received,
+                    network_address: address,
+                })
             }
-            Err(_) => {
-                Err(SocketReceiveError::Empty)
-            }
+            Err(_) => Err(SocketReceiveError::Empty),
         }
     }
 
-    fn recv_client(socket: &UdpSocket, data: &mut [u8]) -> Result<SocketReceiveSuccess, SocketReceiveError> {
-        socket.recv(data)
-            .map(|size| SocketReceiveSuccess { bytes_received: size, network_address: NetworkAddress::default() })
+    fn recv_client(
+        socket: &UdpSocket,
+        data: &mut [u8],
+    ) -> Result<SocketReceiveSuccess, SocketReceiveError> {
+        socket
+            .recv(data)
+            .map(|size| SocketReceiveSuccess {
+                bytes_received: size,
+                network_address: NetworkAddress::default(),
+            })
             .map_err(|_| SocketReceiveError::Empty)
     }
 
-    pub fn send_to(&self, address: NetworkAddress, data: &[u8], length: usize) -> Result<usize, ()> {
+    pub fn send_to(
+        &self,
+        address: NetworkAddress,
+        data: &[u8],
+        length: usize,
+    ) -> Result<usize, ()> {
         let socket = self.socket.as_ref().ok_or(())?;
 
         let slice = &data[0..length];

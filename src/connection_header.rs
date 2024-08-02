@@ -1,7 +1,6 @@
 use crate::int_buffer::IntBuffer;
 
-#[derive(Clone, Copy)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct ConnectionHeader {
     pub message_type: u8,
     pub id: u32,

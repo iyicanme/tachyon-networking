@@ -100,9 +100,9 @@ impl LengthPrefixed {
         self.writer.write_u32(src.len() as u32, dst);
         self.writer.write_u16(channel, dst);
         self.writer.write_address(src_address, dst);
-        
+
         dst[self.writer.index..self.writer.index + src.len()].copy_from_slice(src);
-        
+
         self.writer.index += src.len();
     }
 
@@ -111,9 +111,9 @@ impl LengthPrefixed {
         let channel = self.reader.read_u16(data);
         let address = self.reader.read_address(data);
         let range = self.reader.index..self.reader.index + len;
-        
+
         self.reader.index += len;
-        
+
         (channel, address, range)
     }
 }

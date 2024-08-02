@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
-use crate::{Tachyon, TachyonConfig, TachyonSendError, TachyonSendSuccess};
 use crate::header::MESSAGE_TYPE_RELIABLE;
 use crate::network_address::NetworkAddress;
 use crate::pool::SendTarget;
 use crate::receiver::Receiver;
 use crate::tachyon_receive_result::{TachyonReceiveError, TachyonReceiveSuccess};
+use crate::{Tachyon, TachyonConfig, TachyonSendError, TachyonSendSuccess};
 
 pub struct TachyonTestClient {
     pub client_address: NetworkAddress,
@@ -35,22 +35,31 @@ impl TachyonTestClient {
         assert!(self.client.connect(self.address), "connect failed");
     }
 
-    pub fn client_send_reliable(&mut self, channel_id: u8, length: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
+    pub fn client_send_reliable(
+        &mut self,
+        channel_id: u8,
+        length: usize,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         let target = SendTarget {
             address: self.client_address,
             identity_id: 0,
         };
 
-        self.client.send_to_target(channel_id, target, &mut self.send_buffer, length)
+        self.client
+            .send_to_target(channel_id, target, &mut self.send_buffer, length)
     }
 
-    pub fn client_send_unreliable(&mut self, length: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
+    pub fn client_send_unreliable(
+        &mut self,
+        length: usize,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         let target = SendTarget {
             address: self.client_address,
             identity_id: 0,
         };
 
-        self.client.send_to_target(0, target, &mut self.send_buffer, length)
+        self.client
+            .send_to_target(0, target, &mut self.send_buffer, length)
     }
 
     pub fn client_receive(&mut self) -> Result<TachyonReceiveSuccess, TachyonReceiveError> {
@@ -99,7 +108,11 @@ impl TachyonTest {
         }
     }
 
-    pub fn server_send_reliable(&mut self, channel_id: u8, length: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
+    pub fn server_send_reliable(
+        &mut self,
+        channel_id: u8,
+        length: usize,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         let address = self.remote_client();
         if address.is_default() {
             return Ok(TachyonSendSuccess::default());
@@ -110,10 +123,14 @@ impl TachyonTest {
             identity_id: 0,
         };
 
-        self.server.send_to_target(channel_id, target, &mut self.send_buffer, length)
+        self.server
+            .send_to_target(channel_id, target, &mut self.send_buffer, length)
     }
 
-    pub fn server_send_unreliable(&mut self, length: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
+    pub fn server_send_unreliable(
+        &mut self,
+        length: usize,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         let address = self.remote_client();
         if address.is_default() {
             return Ok(TachyonSendSuccess::default());
@@ -124,19 +141,28 @@ impl TachyonTest {
             identity_id: 0,
         };
 
-        self.server.send_to_target(0, target, &mut self.send_buffer, length)
+        self.server
+            .send_to_target(0, target, &mut self.send_buffer, length)
     }
 
-    pub fn client_send_reliable(&mut self, channel_id: u8, length: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
+    pub fn client_send_reliable(
+        &mut self,
+        channel_id: u8,
+        length: usize,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         let target = SendTarget {
             address: self.client_address,
             identity_id: 0,
         };
 
-        self.client.send_to_target(channel_id, target, &mut self.send_buffer, length)
+        self.client
+            .send_to_target(channel_id, target, &mut self.send_buffer, length)
     }
 
-    pub fn client_send_unreliable(&mut self, length: usize) -> Result<TachyonSendSuccess, TachyonSendError> {
+    pub fn client_send_unreliable(
+        &mut self,
+        length: usize,
+    ) -> Result<TachyonSendSuccess, TachyonSendError> {
         self.client_send_reliable(0, length)
     }
 
@@ -163,7 +189,7 @@ pub fn show_channel_debug(channel: &mut Receiver) {
     );
     channel.set_resend_list();
     for seq in &channel.resend_list {
-        println!("not received:{seq}", );
+        println!("not received:{seq}",);
     }
 }
 
@@ -281,11 +307,33 @@ fn general_stress() {
             std::thread::sleep(Duration::from_millis(10));
         }
 
-        send_receive(true, true, channel_id, message_type, &mut client, &mut server, &mut send_buffer, &mut receive_buffer, send_message_size, &mut client_remote);
+        send_receive(
+            true,
+            true,
+            channel_id,
+            message_type,
+            &mut client,
+            &mut server,
+            &mut send_buffer,
+            &mut receive_buffer,
+            send_message_size,
+            &mut client_remote,
+        );
     }
 
     for _ in 0..200 {
-        send_receive(true, false, channel_id, message_type, &mut client, &mut server, &mut send_buffer, &mut receive_buffer, send_message_size, &mut client_remote);
+        send_receive(
+            true,
+            false,
+            channel_id,
+            message_type,
+            &mut client,
+            &mut server,
+            &mut send_buffer,
+            &mut receive_buffer,
+            send_message_size,
+            &mut client_remote,
+        );
     }
 
     let channel = client.get_channel(client_address, channel_id).unwrap();
@@ -301,16 +349,16 @@ fn general_stress() {
     );
 
     if let Some(channel) = server.get_channel(client_remote, channel_id) {
-            channel.receiver.publish();
-            channel.receiver.set_resend_list();
-            channel.update_stats();
+        channel.receiver.publish();
+        channel.receiver.set_resend_list();
+        channel.update_stats();
         println!(
             "SERVER {0} current_seq:{1} last_seq:{2} missing:{3}",
-                channel.stats,
-                channel.receiver.current_sequence,
-                channel.receiver.last_sequence,
-                channel.receiver.resend_list.len()
-            );
+            channel.stats,
+            channel.receiver.current_sequence,
+            channel.receiver.last_sequence,
+            channel.receiver.resend_list.len()
+        );
     }
 
     println!(
@@ -385,7 +433,14 @@ fn many_clients() {
 
     for _ in 0..10000 {
         match server.receive_loop(&mut receive_buffer) {
-            Ok(TachyonReceiveSuccess { length: 0, receive_type: _, address: _ }) | Err(_) => { break; }
+            Ok(TachyonReceiveSuccess {
+                length: 0,
+                receive_type: _,
+                address: _,
+            })
+            | Err(_) => {
+                break;
+            }
             _ => {}
         }
     }
@@ -394,6 +449,6 @@ fn many_clients() {
         server.update();
     }
     let elapsed = now.elapsed();
-    println!("Elapsed: {elapsed:.2?}", );
+    println!("Elapsed: {elapsed:.2?}",);
     println!("Server CombinedStats:{0}", server.get_combined_stats());
 }

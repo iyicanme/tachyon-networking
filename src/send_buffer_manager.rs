@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use crate::byte_buffer_pool::{BYTE_BUFFER_SIZE_DEFAULT, ByteBuffer, ByteBufferPool};
+use crate::byte_buffer_pool::{ByteBuffer, ByteBufferPool, BYTE_BUFFER_SIZE_DEFAULT};
 use crate::sequence::Sequence;
 use crate::sequence_buffer::SequenceBuffer;
 
@@ -25,7 +25,7 @@ impl SendBufferManager {
             values: Vec::new(),
             partition_by: SEND_BUFFER_SIZE,
         };
-        
+
         for _ in 0..SEND_BUFFER_SIZE {
             buffers.values.push(None);
         }
@@ -45,7 +45,8 @@ impl SendBufferManager {
     }
 
     pub fn expire(&mut self) {
-        let expired = self.buffers
+        let expired = self
+            .buffers
             .values
             .iter()
             .flatten()

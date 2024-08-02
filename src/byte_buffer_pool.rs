@@ -79,7 +79,8 @@ impl ByteBufferPool {
     }
 
     pub fn return_buffer(&mut self, mut byte_buffer: ByteBuffer) -> bool {
-        let space_available = (byte_buffer.length <= self.buffer_size) && (self.count < self.pool_size);
+        let space_available =
+            (byte_buffer.length <= self.buffer_size) && (self.count < self.pool_size);
 
         if space_available {
             byte_buffer.version += 1;
@@ -129,7 +130,7 @@ impl Default for ByteBufferPool {
 #[cfg(test)]
 mod tests {
     use crate::byte_buffer_pool::{
-        BYTE_BUFFER_SIZE_DEFAULT, ByteBuffer, ByteBufferPool, POOL_SIZE_DEFAULT,
+        ByteBuffer, ByteBufferPool, BYTE_BUFFER_SIZE_DEFAULT, POOL_SIZE_DEFAULT,
     };
 
     #[test]

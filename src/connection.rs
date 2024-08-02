@@ -22,8 +22,7 @@ impl Connection {
     }
 }
 
-#[derive(Clone, Copy)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct Identity {
     pub id: u32,
     pub session_id: u32,

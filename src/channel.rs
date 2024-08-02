@@ -1,6 +1,5 @@
 use rustc_hash::FxHashMap;
 
-use crate::{TachyonSendError, TachyonSendSuccess};
 use crate::fragmentation::Fragmentation;
 use crate::header::{
     Header, MESSAGE_TYPE_FRAGMENT, MESSAGE_TYPE_NACK, MESSAGE_TYPE_NONE, MESSAGE_TYPE_RELIABLE,
@@ -13,6 +12,7 @@ use crate::network_address::NetworkAddress;
 use crate::receiver::Receiver;
 use crate::send_buffer_manager::SendBufferManager;
 use crate::tachyon_socket::TachyonSocket;
+use crate::{TachyonSendError, TachyonSendSuccess};
 
 pub static mut NONE_SEND_DATA: [u8; TACHYON_HEADER_SIZE] = [0; TACHYON_HEADER_SIZE];
 const NACK_REDUNDANCY_DEFAULT: u32 = 1;
@@ -174,11 +174,11 @@ impl Channel {
     pub fn receive_published(&mut self, receive_buffer: &mut [u8]) -> (u32, NetworkAddress) {
         for _ in 0..1000 {
             let (length, address, should_retry) = self.receive_published_internal(receive_buffer);
-            
+
             if length > 0 {
                 return (length, address);
             }
-            
+
             if !should_retry {
                 break;
             }
@@ -232,7 +232,8 @@ impl Channel {
             return (0, self.address, true);
         }
 
-        receive_buffer[0..buffer_len - header_size].copy_from_slice(&byte_buffer.get()[header_size..buffer_len]);
+        receive_buffer[0..buffer_len - header_size]
+            .copy_from_slice(&byte_buffer.get()[header_size..buffer_len]);
         self.receiver.return_buffer(byte_buffer);
 
         self.stats.published_consumed += 1;
@@ -261,7 +262,13 @@ impl Channel {
         received_len: usize,
     ) {
         let fragmented = self.frag.receive_fragment(receive_buffer, received_len).0;
-        if fragmented && self.receiver.receive_packet(sequence, receive_buffer, TACHYON_FRAGMENTED_HEADER_SIZE) {
+        if fragmented
+            && self.receiver.receive_packet(
+                sequence,
+                receive_buffer,
+                TACHYON_FRAGMENTED_HEADER_SIZE,
+            )
+        {
             self.stats.fragments_received += 1;
         }
     }
@@ -317,7 +324,8 @@ impl Channel {
         };
 
         let sequence = send_buffer.sequence;
-        send_buffer.byte_buffer.get_mut()[header_len..body_len + header_len].copy_from_slice(&data[0..body_len]);
+        send_buffer.byte_buffer.get_mut()[header_len..body_len + header_len]
+            .copy_from_slice(&data[0..body_len]);
 
         let mut header = Header {
             channel: self.id,
@@ -337,11 +345,16 @@ impl Channel {
 
         header.write(send_buffer.byte_buffer.get_mut());
 
-        let sent_len = socket.send_to(address, send_buffer.byte_buffer.get(), send_buffer_len).unwrap_or_default();
+        let sent_len = socket
+            .send_to(address, send_buffer.byte_buffer.get(), send_buffer_len)
+            .unwrap_or_default();
         self.stats.bytes_sent += sent_len as u64;
         self.stats.sent += 1;
 
-        Ok(TachyonSendSuccess { sent_len: sent_len as u32, header })
+        Ok(TachyonSendSuccess {
+            sent_len: sent_len as u32,
+            header,
+        })
     }
 
     pub fn update(&mut self, socket: &TachyonSocket) {
@@ -374,16 +387,24 @@ impl Channel {
 
                 let message_type = reader.read_u8(send_buffer.byte_buffer.get());
                 let _ = if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
-                    let send_len = Self::rewrite_reliable_nack_to_reliable(&mut self.resend_rewrite_buffer, send_buffer.byte_buffer.get());
+                    let send_len = Self::rewrite_reliable_nack_to_reliable(
+                        &mut self.resend_rewrite_buffer,
+                        send_buffer.byte_buffer.get(),
+                    );
                     socket.send_to(*address, &self.resend_rewrite_buffer, send_len)
                 } else {
-                    socket.send_to(*address, send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length)
+                    socket.send_to(
+                        *address,
+                        send_buffer.byte_buffer.get(),
+                        send_buffer.byte_buffer.length,
+                    )
                 };
 
                 self.stats.resent += 1;
             } else {
                 Self::create_none(*sequence, self.id);
-                let _sent_len = socket.send_to(*address, unsafe { &NONE_SEND_DATA }, TACHYON_HEADER_SIZE);
+                let _sent_len =
+                    socket.send_to(*address, unsafe { &NONE_SEND_DATA }, TACHYON_HEADER_SIZE);
                 self.stats.nones_sent += 1;
             }
         }

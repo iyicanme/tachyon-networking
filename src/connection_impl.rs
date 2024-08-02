@@ -3,8 +3,8 @@ use std::time::Instant;
 use crate::connection::{Connection, Identity};
 use crate::connection_header::ConnectionHeader;
 use crate::header::{
-    MESSAGE_TYPE_IDENTITY_LINKED, MESSAGE_TYPE_IDENTITY_UNLINKED,
-    MESSAGE_TYPE_LINK_IDENTITY, MESSAGE_TYPE_UNLINK_IDENTITY,
+    MESSAGE_TYPE_IDENTITY_LINKED, MESSAGE_TYPE_IDENTITY_UNLINKED, MESSAGE_TYPE_LINK_IDENTITY,
+    MESSAGE_TYPE_UNLINK_IDENTITY,
 };
 use crate::network_address::NetworkAddress;
 use crate::Tachyon;
@@ -56,12 +56,15 @@ impl Tachyon {
 
     #[must_use]
     pub fn get_connection_by_identity(&self, id: u32) -> Option<&Connection> {
-        self.identity_to_address_map.get(&id).and_then(|a| self.get_connection(*a))
+        self.identity_to_address_map
+            .get(&id)
+            .and_then(|a| self.get_connection(*a))
     }
 
     pub fn get_connections(&mut self, max: usize) -> Vec<Connection> {
         let since_start = self.time_since_start();
-        self.connections.values_mut()
+        self.connections
+            .values_mut()
             .take(max)
             .map(|c| {
                 c.since_last_received = since_start - c.received_at;
@@ -129,7 +132,10 @@ impl Tachyon {
 
     #[must_use]
     pub fn get_connection_identity(&self, address: NetworkAddress) -> Identity {
-        self.connections.get(&address).map(|c| c.identity).unwrap_or_default()
+        self.connections
+            .get(&address)
+            .map(|c| c.identity)
+            .unwrap_or_default()
     }
 
     pub fn remove_connection_by_identity(&mut self, id: u32) {
@@ -274,16 +280,18 @@ impl Tachyon {
 
         header.write(&mut send_buffer);
 
-        let _ = self.socket.send_to(address, &send_buffer, send_buffer.len());
+        let _ = self
+            .socket
+            .send_to(address, &send_buffer, send_buffer.len());
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Tachyon, TachyonConfig};
     use crate::connection::Identity;
     use crate::network_address::NetworkAddress;
     use crate::tachyon_test::TachyonTest;
+    use crate::{Tachyon, TachyonConfig};
 
     #[test]
     fn test_connect() {

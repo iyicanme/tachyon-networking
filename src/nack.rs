@@ -207,7 +207,7 @@ mod tests {
             start_sequence: 0,
             ..Nack::default()
         };
-        
+
         nack.set_flagged(65534);
         assert!(nack.is_flagged(65534));
 
@@ -251,7 +251,7 @@ mod tests {
 
         Nack::write_varint(&nacks, &mut data[..], 0);
         Nack::read_varint(&mut sequences_out, &data[..], 0);
-        
+
         assert_eq!(66, sequences_out.len());
     }
 }
