@@ -14,7 +14,7 @@ use crate::receiver::Receiver;
 use crate::send_buffer_manager::SendBufferManager;
 use crate::tachyon_socket::TachyonSocket;
 
-pub static mut NONE_SEND_DATA: &'static mut [u8] = &mut [0; TACHYON_HEADER_SIZE];
+pub static mut NONE_SEND_DATA: [u8; TACHYON_HEADER_SIZE] = [0; TACHYON_HEADER_SIZE];
 const NACK_REDUNDANCY_DEFAULT: u32 = 1;
 pub const RECEIVE_WINDOW_SIZE_DEFAULT: u32 = 512;
 
@@ -39,7 +39,7 @@ pub struct ChannelStats {
 }
 
 impl ChannelStats {
-    pub fn add_from(&mut self, other: &ChannelStats) {
+    pub fn add_from(&mut self, other: &Self) {
         self.sent += other.sent;
         self.received += other.received;
         self.bytes_sent += other.bytes_sent;
@@ -95,26 +95,27 @@ pub struct ChannelConfig {
 }
 
 impl ChannelConfig {
-    pub fn default_ordered() -> Self {
-        let config = ChannelConfig {
+    #[must_use]
+    pub const fn default_ordered() -> Self {
+        Self {
             ordered: 1,
             receive_window_size: RECEIVE_WINDOW_SIZE_DEFAULT,
             nack_redundancy: NACK_REDUNDANCY_DEFAULT,
-        };
-        return config;
+        }
     }
 
-    pub fn default_unordered() -> Self {
-        let config = ChannelConfig {
+    #[must_use]
+    pub const fn default_unordered() -> Self {
+        Self {
             ordered: 0,
             receive_window_size: RECEIVE_WINDOW_SIZE_DEFAULT,
             nack_redundancy: NACK_REDUNDANCY_DEFAULT,
-        };
-        return config;
+        }
     }
 
-    pub fn is_ordered(&self) -> bool {
-        return self.ordered == 1;
+    #[must_use]
+    pub const fn is_ordered(&self) -> bool {
+        self.ordered == 1
     }
 }
 
@@ -133,8 +134,9 @@ pub struct Channel {
 }
 
 impl Channel {
+    #[must_use]
     pub fn create(id: u8, address: NetworkAddress, config: ChannelConfig) -> Self {
-        let channel = Channel {
+        Self {
             id,
             address,
             frag: Fragmentation::default(),
@@ -146,20 +148,23 @@ impl Channel {
             nacked_sequence_map: FxHashMap::default(),
             resend_rewrite_buffer: vec![0; 2048],
             nack_redundancy: config.nack_redundancy,
-        };
-        return channel;
+        }
     }
 
     fn create_none(sequence: u16, channel_id: u8) {
-        let mut header = Header::default();
-        header.message_type = MESSAGE_TYPE_NONE;
-        header.sequence = sequence;
-        header.channel = channel_id;
+        let header = Header {
+            message_type: MESSAGE_TYPE_NONE,
+            sequence,
+            channel: channel_id,
+            ..Header::default()
+        };
+
         header.write(unsafe { &mut NONE_SEND_DATA });
     }
 
-    pub fn is_ordered(&self) -> bool {
-        return self.receiver.is_ordered;
+    #[must_use]
+    pub const fn is_ordered(&self) -> bool {
+        self.receiver.is_ordered
     }
 
     pub fn update_stats(&mut self) {
@@ -177,7 +182,7 @@ impl Channel {
             }
         }
 
-        return (0, self.address);
+        (0, self.address)
     }
 
     // returns message length, address, should retry (queue not empty)
@@ -185,63 +190,57 @@ impl Channel {
         &mut self,
         receive_buffer: &mut [u8],
     ) -> (u32, NetworkAddress, bool) {
-        match self.receiver.take_published() {
-            Some(byte_buffer) => {
-                let buffer_len = byte_buffer.length;
+        let Some(byte_buffer) = self.receiver.take_published() else {
+            return (0, self.address, false);
+        };
 
-                let mut reader = IntBuffer { index: 0 };
-                let message_type = reader.read_u8(&byte_buffer.get());
+        let buffer_len = byte_buffer.length;
 
-                if message_type == MESSAGE_TYPE_NONE {
-                    self.receiver.return_buffer(byte_buffer);
-                    return (0, self.address, true);
-                }
+        let mut reader = IntBuffer { index: 0 };
+        let message_type = reader.read_u8(byte_buffer.get());
 
-                if message_type == MESSAGE_TYPE_FRAGMENT {
-                    let header = Header::read_fragmented(&byte_buffer.get());
-                    match self.frag.assemble(header) {
-                        Ok(res) => {
-                            let assembled_len = res.len();
-                            receive_buffer[0..assembled_len].copy_from_slice(&res[..]);
-                            self.stats.received += 1;
-                            self.stats.fragments_assembled += header.fragment_count as u64;
-                            self.stats.published_consumed += 1;
-                            return (assembled_len as u32, self.address, true);
-                        }
-                        Err(_) => {
-                            self.receiver.return_buffer(byte_buffer);
-                            return (0, self.address, true);
-                        }
-                    }
-                }
-
-                let header_size: usize;
-                if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
-                    header_size = TACHYON_NACKED_HEADER_SIZE;
-                } else if message_type == MESSAGE_TYPE_RELIABLE {
-                    header_size = TACHYON_HEADER_SIZE;
-                } else {
-                    // should not be possible
-                    return (0, self.address, true);
-                }
-
-                receive_buffer[0..buffer_len - header_size]
-                    .copy_from_slice(&byte_buffer.get()[header_size..buffer_len]);
-                self.receiver.return_buffer(byte_buffer);
-
-                self.stats.published_consumed += 1;
-                return ((buffer_len - header_size) as u32, self.address, true);
-            }
-            None => {
-                return (0, self.address, false);
-            }
+        if message_type == MESSAGE_TYPE_NONE {
+            self.receiver.return_buffer(byte_buffer);
+            return (0, self.address, true);
         }
+
+        if message_type == MESSAGE_TYPE_FRAGMENT {
+            let header = Header::read_fragmented(byte_buffer.get());
+            let Ok(res) = self.frag.assemble(header) else {
+                self.receiver.return_buffer(byte_buffer);
+                return (0, self.address, true);
+            };
+
+            let assembled_len = res.len();
+            receive_buffer[0..assembled_len].copy_from_slice(&res[..]);
+            self.stats.received += 1;
+            self.stats.fragments_assembled += header.fragment_count as u64;
+            self.stats.published_consumed += 1;
+
+            return (assembled_len as u32, self.address, true);
+        }
+
+        let header_size: usize;
+        if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
+            header_size = TACHYON_NACKED_HEADER_SIZE;
+        } else if message_type == MESSAGE_TYPE_RELIABLE {
+            header_size = TACHYON_HEADER_SIZE;
+        } else {
+            // should not be possible
+            return (0, self.address, true);
+        }
+
+        receive_buffer[0..buffer_len - header_size].copy_from_slice(&byte_buffer.get()[header_size..buffer_len]);
+        self.receiver.return_buffer(byte_buffer);
+
+        self.stats.published_consumed += 1;
+        ((buffer_len - header_size) as u32, self.address, true)
     }
 
     pub fn process_none_message(
         &mut self,
         sequence: u16,
-        receive_buffer: &mut [u8],
+        receive_buffer: &[u8],
         received_len: usize,
     ) {
         self.stats.nones_received += 1;
@@ -256,38 +255,32 @@ impl Channel {
     pub fn process_fragment_message(
         &mut self,
         sequence: u16,
-        receive_buffer: &mut [u8],
+        receive_buffer: &[u8],
         received_len: usize,
     ) {
-        let received_frag_res = self.frag.receive_fragment(receive_buffer, received_len);
-        if received_frag_res.0 {
-            if self.receiver.receive_packet(
-                sequence,
-                receive_buffer,
-                TACHYON_FRAGMENTED_HEADER_SIZE,
-            ) {
-                self.stats.fragments_received += 1;
-            }
+        let fragmented = self.frag.receive_fragment(receive_buffer, received_len).0;
+        if fragmented && self.receiver.receive_packet(sequence, receive_buffer, TACHYON_FRAGMENTED_HEADER_SIZE) {
+            self.stats.fragments_received += 1;
         }
     }
 
     // separate nack message, varint encoded
-    pub fn process_nack_message(&mut self, address: NetworkAddress, receive_buffer: &mut [u8]) {
+    pub fn process_nack_message(&mut self, address: NetworkAddress, receive_buffer: &[u8]) {
         self.nacked_sequences.clear();
         Nack::read_varint(
             &mut self.nacked_sequences,
-            &receive_buffer[..],
+            receive_buffer,
             TACHYON_HEADER_SIZE,
         );
         self.copy_nacked_to_map(address);
     }
 
     // nack that is in a reliable message
-    pub fn process_single_nack(&mut self, address: NetworkAddress, receive_buffer: &mut [u8]) {
+    pub fn process_single_nack(&mut self, address: NetworkAddress, receive_buffer: &[u8]) {
         self.nacked_sequences.clear();
         Nack::read_single(
             &mut self.nacked_sequences,
-            &receive_buffer[..],
+            receive_buffer,
             TACHYON_HEADER_SIZE,
         );
         self.copy_nacked_to_map(address);
@@ -296,7 +289,7 @@ impl Channel {
     pub fn send_reliable(
         &mut self,
         address: NetworkAddress,
-        data: &mut [u8],
+        data: &[u8],
         body_len: usize,
         socket: &TachyonSocket,
     ) -> TachyonSendResult {
@@ -319,43 +312,41 @@ impl Channel {
 
         let send_buffer_len = body_len + header_len;
 
-        match self.send_buffers.create_send_buffer(send_buffer_len) {
-            Some(send_buffer) => {
-                let sequence = send_buffer.sequence;
-                send_buffer.byte_buffer.get_mut()[header_len..body_len + header_len]
-                    .copy_from_slice(&data[0..body_len]);
+        let Some(send_buffer) = self.send_buffers.create_send_buffer(send_buffer_len) else {
+            result.error = SEND_ERROR_UNKNOWN;
+            return result;
+        };
 
-                let mut header = Header::default();
-                header.channel = self.id;
-                header.sequence = sequence;
+        let sequence = send_buffer.sequence;
+        send_buffer.byte_buffer.get_mut()[header_len..body_len + header_len].copy_from_slice(&data[0..body_len]);
 
-                if let Some(nack) = nack_option {
-                    header.message_type = MESSAGE_TYPE_RELIABLE_WITH_NACK;
-                    header.start_sequence = nack.start_sequence;
-                    header.flags = nack.flags;
+        let mut header = Header {
+            channel: self.id,
+            sequence,
+            ..Header::default()
+        };
 
-                    self.stats.nacks_sent += nack.nacked_count as u64;
-                } else {
-                    header.message_type = MESSAGE_TYPE_RELIABLE;
-                }
+        if let Some(nack) = nack_option {
+            header.message_type = MESSAGE_TYPE_RELIABLE_WITH_NACK;
+            header.start_sequence = nack.start_sequence;
+            header.flags = nack.flags;
 
-                header.write(&mut send_buffer.byte_buffer.get_mut());
-
-                let sent_len =
-                    socket.send_to(address, &send_buffer.byte_buffer.get(), send_buffer_len);
-                result.sent_len = sent_len as u32;
-                result.header = header;
-
-                self.stats.bytes_sent += sent_len as u64;
-                self.stats.sent += 1;
-
-                return result;
-            }
-            None => {
-                result.error = SEND_ERROR_UNKNOWN;
-                return result;
-            }
+            self.stats.nacks_sent += nack.nacked_count as u64;
+        } else {
+            header.message_type = MESSAGE_TYPE_RELIABLE;
         }
+
+        header.write(send_buffer.byte_buffer.get_mut());
+
+        let sent_len =
+            socket.send_to(address, send_buffer.byte_buffer.get(), send_buffer_len);
+        result.sent_len = sent_len as u32;
+        result.header = header;
+
+        self.stats.bytes_sent += sent_len as u64;
+        self.stats.sent += 1;
+
+        result
     }
 
     pub fn update(&mut self, socket: &TachyonSocket) {
@@ -377,53 +368,47 @@ impl Channel {
     // Resend messages for nacks sent to us. We accumulate these into a hashmap of unique sequence/address pairs
     // and then do the resends all at once when update() is run.
     fn resend_nacked(&mut self, socket: &TachyonSocket) {
-        if self.nacked_sequence_map.len() == 0 {
+        if self.nacked_sequence_map.is_empty() {
             return;
         }
 
         for (sequence, address) in &self.nacked_sequence_map {
             self.stats.nacks_received += 1;
-            match self.send_buffers.get_send_buffer(*sequence) {
-                Some(send_buffer) => {
-                    let mut reader = IntBuffer { index: 0 };
+            if let Some(send_buffer) = self.send_buffers.get_send_buffer(*sequence) {
+                let mut reader = IntBuffer { index: 0 };
 
-                    let message_type = reader.read_u8(&send_buffer.byte_buffer.get());
+                let message_type = reader.read_u8(send_buffer.byte_buffer.get());
+                let _ = if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
+                    let send_len = Self::rewrite_reliable_nack_to_reliable(&mut self.resend_rewrite_buffer, send_buffer.byte_buffer.get());
+                    socket.send_to(*address, &self.resend_rewrite_buffer, send_len)
+                } else {
+                    socket.send_to(*address, send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length)
+                };
 
-                    // rewrite to MESSAGE_TYPE_RELIABLE.
-                    let _ = if message_type == MESSAGE_TYPE_RELIABLE_WITH_NACK {
-                        let send_len = Channel::rewrite_reliable_nack_to_reliable(
-                            &mut self.resend_rewrite_buffer,
-                            &send_buffer.byte_buffer.get(),
-                        );
-
-                        socket.send_to(*address, &self.resend_rewrite_buffer, send_len)
-                    } else {
-                        socket.send_to(*address, &send_buffer.byte_buffer.get(), send_buffer.byte_buffer.length)
-                    };
-
-                    self.stats.resent += 1;
-                }
-                None => {
-                    Channel::create_none(*sequence, self.id);
-                    let _sent_len =
-                        socket.send_to(*address, unsafe { &NONE_SEND_DATA }, TACHYON_HEADER_SIZE);
-                    self.stats.nones_sent += 1;
-                }
+                self.stats.resent += 1;
+            } else {
+                Self::create_none(*sequence, self.id);
+                let _sent_len = socket.send_to(*address, unsafe { &NONE_SEND_DATA }, TACHYON_HEADER_SIZE);
+                self.stats.nones_sent += 1;
             }
         }
+
         self.nacked_sequence_map.clear();
     }
 
     // Send nacks for sequences we are missing
     fn send_nacks(&mut self, socket: &TachyonSocket) {
         let nack_count = self.receiver.create_nacks();
-        if self.receiver.nack_list.len() == 0 {
+        if self.receiver.nack_list.is_empty() {
             return;
         }
 
-        let mut header = Header::default();
-        header.message_type = MESSAGE_TYPE_NACK;
-        header.channel = self.id;
+        let header = Header {
+            message_type: MESSAGE_TYPE_NACK,
+            channel: self.id,
+            ..Header::default()
+        };
+
         header.write(&mut self.nack_send_data);
 
         let position = Nack::write_varint(
@@ -431,7 +416,8 @@ impl Channel {
             &mut self.nack_send_data,
             TACHYON_HEADER_SIZE as u64,
         );
-        socket.send_to(self.address, &self.nack_send_data, position as usize);
+
+        let _ = socket.send_to(self.address, &self.nack_send_data, position as usize);
 
         self.stats.nacks_sent += nack_count as u64;
     }
@@ -449,7 +435,7 @@ impl Channel {
         header.message_type = MESSAGE_TYPE_RELIABLE;
         header.write(rewrite_buffer);
 
-        return TACHYON_HEADER_SIZE + src_body_len;
+        TACHYON_HEADER_SIZE + src_body_len
     }
 }
 
@@ -467,24 +453,29 @@ mod tests {
             ChannelConfig::default_ordered(),
         );
         let mut send_buffer: Vec<u8> = vec![0; 1200];
-        let mut header = Header::default();
-        header.message_type = MESSAGE_TYPE_RELIABLE_WITH_NACK;
-        header.channel = 13;
-        header.sequence = 200;
-        header.start_sequence = 12345;
-        header.flags = 99;
+        let header = Header {
+            message_type: MESSAGE_TYPE_RELIABLE_WITH_NACK,
+            channel: 13,
+            sequence: 200,
+            start_sequence: 12345,
+            flags: 99,
+            ..Header::default()
+        };
+
         header.write(&mut send_buffer);
+
         send_buffer[10] = 3;
         send_buffer[1199] = 7;
         let send_len = Channel::rewrite_reliable_nack_to_reliable(
             &mut channel.resend_rewrite_buffer,
             &send_buffer,
         );
+
         assert_eq!(1200 - 6, send_len);
         assert_eq!(3, channel.resend_rewrite_buffer[4]);
         assert_eq!(7, channel.resend_rewrite_buffer[1199 - 6]);
 
-        let header = Header::read(&mut channel.resend_rewrite_buffer);
+        let header = Header::read(&channel.resend_rewrite_buffer);
         assert_eq!(MESSAGE_TYPE_RELIABLE, header.message_type);
         assert_eq!(200, header.sequence);
         assert_eq!(13, header.channel);
